@@ -1,0 +1,9 @@
+# Demo pipeline (CPU only). Install torch from the CPU index:
+#   pip install -r demo/requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.2
+torchvision>=0.17
+opencv-python-headless>=4.8
+ultralytics==8.4.208
+gradio>=6,<7
+pandas>=2
+pillow>=10

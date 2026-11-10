@@ -81,6 +81,40 @@
 
 根因提示来自类别对应的排查规则。系统统计同工位最近 50 条不合格检验单中的同类候选数，并在双方均有温度数据时比较峰值与历史均值。历史关联和图像候选均需现场验证。自动结论依据当前模型的候选检出结果，现场精度需要用独立标注样本验证。
 
+## 小样本冷启动演示（demo/，Gradio）
+
+独立于上面的 Flask 系统，纯 CPU，本地运行，不上传任何数据（Gradio 分享链接与各库的统计上报均已关闭）。流程：四点透视校正 → PatchCore 异常热力图（只学正常板）→ OpenCV 合成缺陷训练的轻量 YOLO 给类别 → 质检员复核签字。
+
+```bash
+python -m venv .venv && . .venv/bin/activate
+pip install -r demo/requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+# 照片放在 data/raw_upload2/dataset/normal 和 .../abnormal
+python -m demo.build          # 配准 → PatchCore → 合成数据 → YOLO，8 核 CPU 约 20 分钟（--skip-yolo 约 2 分钟）
+python -m demo.app_gradio     # http://127.0.0.1:7860 ；手机访问设 PCB_DEMO_HOST=0.0.0.0
+python -m unittest tests.test_demo
+```
+
+首次构建需联网下载两个预训练权重（torchvision `wide_resnet50_2`、Ultralytics `yolo11n.pt`），之后可离线运行。产物都在 `data/demo/`（已被 .gitignore 忽略）。单步命令：`python -m demo.register | demo.patchcore | demo.synth | demo.train_yolo | demo.pipeline`。
+
+| 模块 | 作用 |
+|---|---|
+| `demo/register.py` | 标准板手工标四角一次；其余照片用 SIFT 对标准视角求四角，再做 `getPerspectiveTransform`。对齐内点不足判“需重拍”；界面提供手动点四角（自动选朝向）。 |
+| `demo/patchcore.py` | `wide_resnet50_2` 第 2、3 层特征，每个 8px 格子是一个 patch；按位置邻域检索的记忆库；用留一法得到逐位置容差图和阈值。 |
+| `demo/synth.py` | 合成漏焊/空孔、桥接、缺件、元件偏移、焊盘损伤五类，切 768×768 瓦片生成 YOLO 数据集。不合成虚焊/冷焊。 |
+| `demo/pipeline.py` | 融合规则：热力图与 YOLO 同时同意才算带类别的发现；YOLO 单独高置信度（≥0.6）送复核；其余画虚线提示。判定分 PASS / REVIEW / NG / RETAKE。 |
+| `demo/app_gradio.py` | 检测工位、手动四点校正、合成缺陷实验、复核记录与看板（CSV 导出）、模型说明与边界。 |
+
+在现有 9 张正常板 + 1 张缺陷板上的实测（详见界面“模型说明与边界”页，数字由 `data/demo/*_report.json` 生成）：
+
+- 配准：10/10 张自动校正成功（含横拍、倒置、强倾斜）。
+- PatchCore：缺陷图得分 1.59，阈值 1.33，热力图亮在中部空孔区。留一法下 9 张正常板有 2 张超过阈值（带三防漆的一张、强倾斜的一张）。
+- 热力图对注入缺陷的灵敏度（留一法、合成缺陷）：空孔 62/63、缺件 9/11、桥接 4/8、偏移 2/5、焊盘损伤 3/11。
+- YOLO：合成验证集 mAP50 0.97；在真实缺陷图上以 0.38–0.71 的置信度认出空孔。合成空孔的外观是看过这张图后设计的，不是独立验证。
+- 整链在 9 张正常板原图上：8 张 PASS，1 张（强倾斜）因 YOLO 桥接误报进入 REVIEW。这些正常板都在记忆库里，PASS 不代表新板的误报率。
+- 单张耗时约 4–5 秒（配准 1s + PatchCore 3s + YOLO 0.1s）。
+
+只有一张真实缺陷图，以上不能当作检出率；上线前需固定机位光源、每种板采 30–50 张正常板，并用复核页积累的真实标签重新标定阈值。
+
 ## 部署与存储
 
 默认仅本机访问。SQLite 数据库位于 `data/records.sqlite`，含检验图像和签核信息，停服后可复制备份。可用 `PCB_DATA`、`PCB_HOST`、`PCB_PORT` 指定存储目录、绑定地址和端口。手机访问需将服务部署到可达的内网地址。浏览器实时摄像头与语音功能通常需要受信任的 HTTPS；手机亦可通过文件选择器拍照上传。系统采用姓名签核，部署至多用户网络前需配套身份认证与访问控制。
