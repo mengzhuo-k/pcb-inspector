@@ -8,11 +8,21 @@ from __future__ import annotations
 import json
 import hashlib
 import shutil
+import sqlite3
+import time
+from contextlib import closing
 import sys
 import traceback
 from pathlib import Path
 
 from ultralytics import YOLO
+
+
+def mark_testing(config):
+    if config.get("platform_database") and config.get("job_id"):
+        with closing(sqlite3.connect(config["platform_database"], timeout=30)) as conn, conn:
+            conn.execute("UPDATE jobs SET testing_started=? WHERE id=? AND state='running'",
+                         (time.time(), config["job_id"]))
 
 
 def evaluate_detector(model, dataset, split, imgsz, batch, device):
@@ -91,6 +101,7 @@ def main() -> int:
                         batch=batch, device=device, project=str(job_dir), name="fit",
                         exist_ok=True, workers=0, seed=0, plots=False, verbose=True)
             best = job_dir / "fit/weights/best.pt"
+            mark_testing(config)
             model = YOLO(str(best))
             result = evaluate_detector(model, dataset, "val", imgsz, batch, device)
             result["test"] = evaluate_detector(model, dataset, "test", imgsz, batch, device)
@@ -111,6 +122,7 @@ def main() -> int:
                         batch=batch, device=device, project=str(job_dir), name="fit",
                         exist_ok=True, workers=0, seed=0, plots=False, verbose=True)
             best = job_dir / "fit/weights/best.pt"
+            mark_testing(config)
             model = YOLO(str(best))
             metrics = model.val(data=str(dataset), split="val", imgsz=imgsz,
                                 batch=batch, device=device, plots=False, verbose=False)

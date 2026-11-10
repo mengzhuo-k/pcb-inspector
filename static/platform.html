@@ -1,277 +1,102 @@
 <!doctype html>
 <html lang="zh-CN"><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>焊视 · PCB 缺陷模型训练平台</title>
-<link rel="stylesheet" href="./static/platform.css?v=20261111n">
-</head>
-<body>
-<header class="topbar">
-  <a class="brand" href="/"><span class="mark">▦</span><span>焊视<small>MODEL PLATFORM</small></span></a>
-  <nav class="tabs" id="tabs">
-    <button data-view="home" class="active">首页</button>
-    <button data-view="capture" class="">拍照 / 上传</button>
-    <button data-view="label" class="">框缺陷</button>
-    <button data-view="accuracy" class="">准确率</button>
-    
-    
-    <button data-view="models" class="">模型版本</button>
-    <button data-view="monitor" class="">使用情况</button>
-  </nav>
-  <div class="project-picker">
-    <select id="projectSelect" aria-label="当前产品/工位"></select>
-    <button id="newProjectBtn" class="quiet">新建产品/工位</button>
-    <button id="helpBtn" class="quiet">? 使用说明</button>
-  </div>
-</header>
-
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>焊视 · 图片标注</title>
+<link rel="stylesheet" href="./static/platform.css?v=20261111aq">
+</head><body>
+<header class="topbar"><div class="brand"><span class="mark">▦</span><span>焊视</span></div></header>
 <main>
-<div id="stepBanner" class="step-banner" hidden></div>
-  <section id="view-home" class="view">
-    <div class="welcome">
-      <div>
-        <h1>今天要做什么？</h1>
-        <p class="lead">每天按顺序做两步：<b>拍照/上传</b> → <b>框出缺陷</b>。框完保存即入库，训练由平台自动完成。</p>
-      </div>
-      <button id="homeHelp" class="quiet">不会用？看说明</button>
-    </div>
-    <div class="task-grid">
-      <button class="task" data-go="capture">
-        <span class="task-step">第 1 步</span>
-        <strong>拍照 / 上传</strong>
-        <small>把整块板拍清楚，或选择照片上传</small>
-        <span class="task-count" id="homeNew">—</span>
-      </button>
-      <button class="task" data-go="label">
-        <span class="task-step">第 2 步</span>
-        <strong>框出缺陷</strong>
-        <small>先在左上角选类型，再拖动圈出缺陷</small>
-        <span class="task-count" id="homeLabeled">—</span>
-      </button>
-      <button class="task" data-go="accuracy">
-        <span class="task-step">查看</span>
-        <strong>缺陷准确率</strong>
-        <small>每类缺陷判断得准不准</small>
-        <span class="task-count" id="homeReview">点击查看</span>
-      </button>
-    </div>
-    <div class="home-guide">
-      <h2>第一次使用？按这 4 步</h2>
-      <ol class="steps-list">
-        <li><b>选产品/工位。</b>右上角选择你现在做的产品；没有就点“新建产品/工位”。</li>
-        <li><b>拍照/上传。</b>整块板放进画面，拍清楚；同一批货填同一个批次。</li>
-        <li><b>圈出缺陷。</b>先在左上角选缺陷类型，再拖动鼠标把缺陷圈出来；画错了右键取消。</li>
-        <li><b>框完保存。</b>点“保存并继续”即入库，系统自动打开下一张。</li>
-        <li><b>看准确率。</b>点“准确率”查看每类缺陷当前判断得准不准；可结合抽样结果检查数字低的类型。</li>
-      </ol>
-    </div>
-    <article class="panel">
-      <div class="panelhead"><h2>每个缺陷的判断准确率</h2><span id="homeAccuracySource" class="muted">本机 SMD DefDB 参考模型</span></div>
-      <div id="homeAccuracyTable"></div>
-    </article>
-    <div id="homeProjectSummary" class="panel"></div>
+  <section class="model-update-bar" aria-label="模型更新">
+    <span id="latestModelLabel" role="status">正在读取最新模型…</span>
+    <a class="recognition-entry" href="/static/index.html">进入识别系统</a>
   </section>
-
-  <section id="view-projects" class="view" hidden="">
-    <div class="viewhead">
-      <div><h1>项目</h1><p>一个项目对应一个板型/工位。先建项目，再采集、标注、训练。</p></div>
-      <span id="projectStats" class="muted">1 个项目</span>
-    </div>
-    <div id="projectList" class="cards"></div>
-    <article class="panel">
-      <h2>新建项目</h2>
-      <form id="projectForm" class="grid3">
-        <label>项目名称<input name="name" maxlength="80" required="" placeholder="例如：电源板 SMT-01"></label>
-        <label>板型<input name="board_model" maxlength="80" placeholder="例如：PSU-24V"></label>
-        <label>工位<input name="station" maxlength="80" placeholder="例如：SMT-01"></label>
-        <label class="wide">备注<textarea name="note" maxlength="500" rows="2"></textarea></label>
-        <button class="primary">创建项目</button>
-      </form>
-    </article>
-  </section>
-
-  <section id="view-capture" class="view" hidden="">
-    <div class="viewhead">
-      <div><h1 id="captureTitle">采集 / 上传 · aa</h1><p>上传原图并登记批次和板序列号；板序列号决定训练/测试划分。</p></div>
-      <span id="captureStats" class="muted">—</span>
-    </div>
-    <article class="panel">
-      <h2>上传图片</h2>
+  <p id="modelTestNotice" role="alert" hidden></p>
+  <h1 class="workspace-title">拍照上传与缺陷标注</h1>
+  <details id="uploadPanel" class="panel upload-panel" open>
+    <summary>拍照 / 上传</summary>
       <form id="uploadForm" class="grid3">
         <label class="wide">图片文件<input id="uploadFiles" name="files" type="file" accept="image/*" multiple="" required=""></label>
-        <label>批次<input name="batch" maxlength="80" placeholder="生产批次"></label>
-        <label>板序列号<input name="board_serial" maxlength="80" placeholder="同一块板用同一编号"></label>
-        <label class="wide">备注<input name="note" maxlength="500"></label>
-        <button class="primary">上传并入库</button>
+        <button class="primary">上传并入库</button><button id="openCamera" type="button" class="quiet">拍照上传</button>
       </form>
-    </article>
-    <div class="toolbar">
+  </details>
+    <div id="annotationWorkspace" class="label-layout">
+      <aside class="image-browser">
+        <div class="panelhead"><h2>图片</h2><span id="labelStats" class="muted">0 张图片</span></div>
       <div class="filters">
         <button data-img-filter="all" class="active">全部</button>
-        <button data-img-filter="new">待框缺陷</button>
-        <button data-img-filter="approved">已保存</button>
+        <button data-img-filter="new">未处理</button>
+        <button data-img-filter="approved">已处理</button>
       </div>
-      <span id="imageCount" class="muted">1 张</span>
-    </div>
-    <div id="imageGrid" class="image-grid"></div>
-  </section>
-
-  <section id="view-label" class="view" hidden="">
-    <div class="viewhead">
-      <div><h1>标注</h1><p>先在左上角选缺陷类型，再拖动鼠标圈出缺陷；右键取消框。实线颜色随类型变化。</p></div>
-      <span id="labelStats" class="muted">1 张图片</span>
-    </div>
-    <div class="label-layout">
-      <aside class="image-list" id="labelList"></aside>
-      <article class="editor">
+        <div class="image-list" id="labelList"></div>
+      </aside>
+      <article id="annotationEditor" class="editor">
         <div class="editor-toolbar">
-          <label>选择缺陷类型<select id="boxClass"><option value="missing_connection">漏焊/缺焊</option><option value="poor_solder_virtual">虚焊</option><option value="poor_solder_cold">冷焊</option><option value="solder_bridge">桥接</option><option value="pad_damage">焊盘损伤</option><option value="component_shift">元件偏移</option><option value="missing_component">缺件</option></select></label>
           <label>标注人<input id="annotator" maxlength="80" placeholder="姓名"></label>
           <button id="prevImage" class="quiet" disabled="">← 上一张</button>
           <button id="nextImage" class="quiet" disabled="">下一张 →</button>
           <span id="imageProgress" class="progress-pill">1 / 1</span>
-          <button id="deleteBox" class="quiet">删除选中框</button>
-          <button id="deleteTrainingImage" class="danger">删除当前图片</button>
-          <button id="saveLabels" class="primary">保存并继续</button>
+          <button id="deleteTrainingImage" class="danger">删除</button>
+          <button id="saveLabels" class="primary">保存</button>
         </div>
-        <div class="canvas-wrap"><canvas id="labelCanvas" width="210" height="374"></canvas><div id="hoverInfo" class="hover-info" hidden></div></div>
-        <p class="muted" id="canvasHint">先在左上角选好缺陷类型，再拖动鼠标圈出缺陷；右键取消。实线颜色随类型变化，鼠标悬浮显示缺陷类型。</p>
-        <div class="legend"><span><b><i></i></b>实线：已标记缺陷（颜色随类型）</span></div>
-        <div id="boxList" class="box-list"></div>
+        <p id="editorEmpty" class="empty">选择或上传图片开始标注。</p>
+        <p id="readOnlyHint" class="muted" hidden>已处理 · 可悬停查看缺陷名称</p>
+        <p id="alignmentHint" class="muted" role="status" hidden></p>
+        <button id="setReference" class="quiet" hidden>将当前图片设为对齐标准图</button>
+        <button id="manualAlign" class="quiet" hidden>手动四点对齐</button>
+        <div class="site-tools">
+          <button id="detectSites" class="quiet">自动定位焊点 / 焊脚</button>
+          <button id="editSites" class="quiet">补点 / 删点</button>
+          <button id="saveSites" class="quiet" disabled>保存点位模板</button>
+          <label class="inline-check"><input id="showSites" type="checkbox" checked>显示点位</label>
+          <button id="batchSiteDefect" class="quiet" disabled>选择缺陷类型</button>
+          <button id="clearSiteSelection" class="quiet" disabled>清空选择</button>
+          <span id="siteStatus" class="muted" role="status">尚未建立点位模板</span>
+        </div>
+        <p id="siteHint" class="muted">点击或拖框多选点位，再点击“选择缺陷类型”。右键清空选择。</p>
+        <div class="annotation-workspace" hidden>
+          <aside class="board-overview">
+            <h2>整板定位</h2>
+            <canvas id="overviewCanvas" width="300" height="320" aria-label="整板定位，点击放大对应位置"></canvas>
+            <p>点击位置放大查看。蓝框表示右侧查看范围。</p>
+            <input id="siteSearch" aria-label="搜索点位编号" placeholder="搜索点位编号" maxlength="80">
+            <div id="siteList" class="candidate-list"></div>
+          </aside>
+          <div class="detail-workspace">
+            <div class="detail-tools">
+              <strong>焊点 / 焊脚细节</strong>
+              <button id="zoomOut" aria-label="缩小">−</button><span id="zoomValue">1×</span><button id="zoomIn" aria-label="放大">+</button>
+              <button id="resetZoom" class="quiet">看全图</button>
+              <label>亮度<input id="detailBrightness" type="range" min="70" max="150" value="100"></label>
+              <button id="resetDisplay" class="quiet">重置显示</button>
+            </div>
+            <div class="canvas-wrap">
+              <canvas id="labelCanvas" width="600" height="450" tabindex="0"></canvas>
+              <div id="hoverInfo" class="hover-info" hidden></div>
+              <div id="siteDefectPopup" class="class-popup" role="dialog" aria-label="缺陷类型" hidden></div>
+            </div>
+          </div>
+        </div>
       </article>
     </div>
-  </section>
 
-  <section id="view-accuracy" class="view" hidden="">
-    <div class="viewhead">
-      <div><h1>每个缺陷的判断准确率</h1><p>员工按这张表判断哪些类型可以放心用、哪些需要重点关注。</p></div>
-      <span id="accuracySource" class="muted">本机 SMD DefDB 参考模型</span>
-    </div>
-    <div id="accuracySummary" class="metric"></div>
-    <div id="accuracyTable" class="panel"></div>
-    <p id="accuracyNote" class="muted">这是系统内置的整板分类模型，不是本工位训练的模型；仅供参考。</p>
-  </section>
-
-  <section id="view-datasets" class="view" hidden="">
-    <div class="viewhead">
-      <div><h1>数据集版本</h1><p>按板序列号/批次分组划分，避免同一块板的增强图跨训练集和测试集。</p></div>
-      <span id="datasetStats" class="muted">1 个版本</span>
-    </div>
-    <article class="panel">
-      <h2>创建数据集版本</h2>
-      <form id="datasetForm" class="grid3">
-        <label>模型模板<select name="template" id="datasetTemplate"><option value="cls">整板缺陷分类</option><option value="det">多类别缺陷检测</option></select></label>
-        <label>划分方式<select name="split_policy">
-          <option value="board">按板序列号</option>
-          <option value="batch">按批次</option>
-          <option value="random">随机</option>
-        </select></label>
-        <label>验证比例<input name="val_ratio" type="number" min="0" max="0.5" step="0.05" value="0.2"></label>
-        <label>测试比例<input name="test_ratio" type="number" min="0" max="0.5" step="0.05" value="0.2"></label>
-        <label>随机种子<input name="seed" type="number" value="20261110"></label>
-        <label>创建人<input name="created_by" maxlength="80" placeholder="姓名"></label>
-        <button class="primary">创建版本</button>
-      </form>
-    </article>
-    <div id="datasetList"></div>
-  </section>
-
-  <section id="view-train" class="view" hidden="">
-    <div class="viewhead">
-      <div><h1>训练</h1><p>选择数据集和模板启动训练；任务在后台运行，可实时看日志。</p></div>
-      <span id="trainStats" class="muted">0 个任务</span>
-    </div>
-    <article class="panel">
-      <h2>新建训练任务</h2>
-      <form id="trainForm" class="grid3">
-        <label class="wide">数据集<select name="dataset_id" id="trainDataset"><option value="15e8f1a22cfc4295b84b66d92400e902">v1 · det · 1/0/0</option></select></label>
-        <label>轮数<input name="epochs" type="number" min="1" max="500" value="40"></label>
-        <label>输入尺寸<input name="imgsz" type="number" min="64" max="1280" value="640"></label>
-        <label>Batch<input name="batch" type="number" min="1" max="128" value="8"></label>
-        <label>设备<input name="device" value="cpu" maxlength="20"></label>
-        <label>基础模型<input name="model" value="yolo11n.pt" maxlength="120"></label>
-        <button class="primary">开始训练</button>
-      </form>
-    </article>
-    <div class="split">
-      <article class="panel">
-        <h2>任务</h2>
-        <div id="jobList" class="job-list"></div>
-      </article>
-      <article class="panel logpanel">
-        <div class="panelhead"><h2>训练日志</h2><span id="jobState" class="muted"></span></div>
-        <pre id="jobLog"></pre>
-      </article>
-    </div>
-  </section>
-
-  <section id="view-models" class="view" hidden="">
-    <div class="viewhead">
-      <div><h1>模型注册</h1><p>训练完成后生成模型版本；发布后成为工位当前模型。</p></div>
-      <span id="modelStats" class="muted">0 个模型版本</span>
-    </div>
-    <article class="panel" id="autoTrainPanel">
-      <div class="panelhead"><h2>一键生成并启用模型</h2><span id="autoTrainState" class="muted"></span></div>
-      <p class="muted">把当前项目已保存的缺陷框自动做成训练集，训练完成后自动发布给检测端使用，不需要再手动导出或发布。</p>
-      <div class="grid3">
-        <label>轮数<input id="autoEpochs" type="number" min="1" max="500" value="20"></label>
-        <label>输入尺寸<input id="autoImgsz" type="number" min="64" max="1280" value="640"></label>
-        <label>Batch<input id="autoBatch" type="number" min="1" max="128" value="8"></label>
-        <button id="autoTrain" class="primary">生成并启用模型</button>
-      </div>
-      <div id="autoTrainLog" class="muted" style="margin-top:8px;white-space:pre-wrap"></div>
-    </article>
-    <div id="modelList" class="cards"></div>
-  </section>
-
-  <section id="view-monitor" class="view" hidden="">
-    <div class="viewhead">
-      <div><h1>发布与监控</h1><p>查看当前部署模型、运行反馈与回流样本。</p></div>
-      <span id="monitorStats" class="muted">反馈  · 待处理 0</span>
-    </div>
-    <div id="deploymentCard" class="panel"></div>
-    <article class="panel">
-      <h2>运行反馈回流</h2>
-      <p class="muted">把现场低置信度、误判图片上传到这里，转为待标注样本，进入下一轮训练。</p>
-      <form id="feedbackForm" class="grid3">
-        <label class="wide">图片<input id="feedbackImage" name="image" type="file" accept="image/*" required=""></label>
-        <label>模型预测<input name="predicted" maxlength="120" placeholder="例如：虚焊 0.62"></label>
-        <label class="wide">说明<input name="note" maxlength="500" placeholder="例如：实际是桥接，模型判成虚焊"></label>
-        <button class="primary">加入反馈队列</button>
-      </form>
-      <div id="feedbackList"></div>
-    </article>
-  </section>
 </main>
-
-<div id="toast" role="status" class=""></div>
-
-<dialog id="helpDialog" class="help-dialog">
-  <div class="help-head"><h2>使用说明</h2><button id="closeHelp" class="quiet">关闭</button></div>
-  <div class="help-body">
-    <p class="lead">每天按 2 步走：<b>拍照/上传 → 框出缺陷</b>。框完保存即入库。</p>
-    <ol class="steps-list">
-      <li><b>选产品/工位。</b>右上角选择当前产品；没有就新建。</li>
-      <li><b>拍照/上传。</b>整块板放进画面，拍清楚；同一批货填同一个批次。</li>
-      <li><b>圈出缺陷。</b>先在左上角选缺陷类型，再拖动鼠标把缺陷圈出来；画错了右键取消。</li>
-      <li><b>保存。</b>框完点“保存并继续”，系统自动打开下一张；全部框完即可。</li>
-      <li><b>看准确率。</b>点“准确率”查看每类缺陷当前判断得准不准，可结合抽样结果检查数字低的类型。</li>
-    </ol>
-    <img src="./static/platform-example.jpg" alt="框缺陷示例：红框包住坏点，右侧选择类型">
-    <p class="muted">示例：红框只包住有问题的焊点/元件，不要框住整块板。类型选错比不框更麻烦。</p>
-    <h3>颜色说明</h3>
-    <p><span class="badge new">待标注</span> 还没框　<span class="badge labeled">已保存</span> 标注已保存　
-      <span class="badge approved">已通过</span> 可以用于训练　<span class="badge rejected">已驳回</span> 需要重做</p>
-    <h3>常见问题</h3>
-    <p><b>没有产品？</b>点右上角“新建产品/工位”。<br>
-      <b>照片糊了？</b>重新拍，整块板要清楚、不要反光。<br>
-      <b>框错了？</b>点框选中后按“删除选中框”，重新画。<br>
-      <b>为什么不能训练？</b>训练由平台自动完成，员工只需要拍照、框缺陷、保存。<br>
-      <b>准确率怎么看？</b>准确率是每一类缺陷判断对的比例；低于 80% 的类型可结合抽样结果检查。</p>
+<dialog id="alignmentDialog" class="help-dialog">
+  <div class="help-head"><h2>手动对齐板面</h2><button id="cancelAlignment" type="button">关闭</button></div>
+  <div class="help-body"><p id="pointInstruction" role="status"></p>
+    <canvas id="pointCanvas" aria-label="依次选择板面对应位置"></canvas>
+    <button id="undoPoint" type="button">撤销上一点</button>
+    <button id="applyAlignment" class="primary" type="button">完成对齐</button>
   </div>
 </dialog>
-
-<script src="./static/platform.js?v=20261111q"></script>
-
-
+<dialog id="cameraDialog" class="help-dialog">
+  <div class="help-head"><h2>拍照上传</h2><button id="closeCamera" type="button" class="quiet">关闭</button></div>
+  <div class="help-body">
+    <video id="captureVideo" autoplay playsinline muted></video>
+    <p id="cameraStatus" role="status"></p>
+    <button id="takePhoto" type="button" class="primary" disabled>拍照并上传</button>
+  </div>
+</dialog>
+<div id="toast" role="status"></div>
+<script src="./static/model-test-notice.js"></script>
+<script src="./static/platform.js?v=20261111aq"></script>
 </body></html>

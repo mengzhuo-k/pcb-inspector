@@ -19,3 +19,13 @@ $('trainingLink').onclick=()=>window.open('/platform','_blank')
 if (new URLSearchParams(location.search).get('page') === 'training') window.open('/platform','_blank')
 refreshModelStatus()
 setInterval(refreshModelStatus,5000)
+
+async function refreshTestNotice(){
+  try{
+    renderModelTestNotice(await api('/platform/api/model-testing'))
+  }catch{
+    // Retry on the next status poll if the training platform is restarting.
+  }
+}
+refreshTestNotice()
+setInterval(refreshTestNotice,3000)

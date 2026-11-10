@@ -131,6 +131,25 @@ def _build_pdf(snapshot, exported_at):
         rows.append([serial(item),item["filename"],result,identify(item),item["model_version"] or "未记录",review])
     story.append(table(["序号","图片文件名","当前结果","整板识别","检测模型","复查人员或异常"],
                        rows,[34,130,55,78,90,width-387]))
+    process_items = [item for item in done if item.get("process_parameters") or item.get("analysis")]
+    if process_items:
+        story.append(paragraph("工艺参数与缺陷分析", heading))
+        for item in process_items:
+            parameters = json.loads(item.get("process_parameters") or "{}")
+            findings = json.loads(item.get("analysis") or "[]")
+            story.append(paragraph(serial(item)+" "+item["filename"], heading))
+            fields = []
+            if item.get("temp") is not None:
+                fields.append(f"回流峰值 {item['temp']:g} °C")
+            if parameters.get("reflow_seconds") is not None:
+                fields.append(f"回流时间 {parameters['reflow_seconds']:g} 秒")
+            if parameters.get("solder_batch"):
+                fields.append("焊膏批号 "+parameters["solder_batch"])
+            if fields:
+                story.append(paragraph("；".join(fields), body))
+            for finding in findings:
+                story.append(paragraph(f"{finding['label']}　可能根因：{finding['cause']}　"
+                    f"建议：{finding['action']}　依据：{finding['evidence']}", body))
     notes = [item for item in items if item["comment"]]
     if notes:
         story.append(paragraph("员工复查意见",heading))

@@ -3,10 +3,14 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;',
 const message = value => { $('status').textContent = value }
 let stream, version = 0, localUrl, currentBoxes = [], historyRows = [], busy = false, currentRecordId = null
 let currentClassification = null
+let inspectionInput = null
+let currentReadOnly = false
+let exceptionPending=0
+let inspectionFilename = "inspection.jpg"
 const date = value => new Date(value).toLocaleString('zh-CN', {hour12:false})
 const selectedTargets = new Set()
 let overlaysVisible = true
-let currentPage = 'import', reviewOrigin = 'logs', batchOrigin = 'processing'
+let currentPage = 'work', reviewOrigin = 'work', batchOrigin = 'processing'
 
 function toggleTarget(index) {
   if (selectedTargets.has(index)) selectedTargets.delete(index)
@@ -53,7 +57,8 @@ function draw() {
     const active = selectedTargets.has(i)
     const mark = document.createElement('button')
     mark.type = 'button'
-    mark.setAttribute('aria-label','选择漏焊点位 #'+(i+1))
+    mark.setAttribute('aria-label',box.label+' #'+(i+1))
+    mark.title='缺陷：'+box.label+' · '+(box.score*100).toFixed(1)+'%'
     mark.setAttribute('aria-pressed',String(active))
     mark.onclick = () => toggleTarget(i)
     mark.className = 'box'+(active ? ' selected' : '')
@@ -135,13 +140,14 @@ function showImage(input, boxes, source, classification = null) {
   currentBoxes = boxes
   currentClassification = classification
   selectedTargets.clear()
-  const processed = source === '已建档' || source.startsWith('实时检测')
-  const defectCount = boxes.length + (classification?.is_defect ? 1 : 0)
+  const processed = source === '已建档' || source.startsWith('实时检测') || source.startsWith('智能检测')
+  document.querySelector('.detection-panel').classList.toggle('has-results',processed)
+  const defectCount = boxes.length
   $('defectMetric').textContent = processed ? defectCount : '—'
   $('defectMetric').nextElementSibling.textContent = processed ? (defectCount ? '项识别结果' : '未见明显缺陷') : '待检测'
   $('detectionCount').textContent = processed ? boxes.length+' 个点位' : '待检测'
   $('detectionEmpty').hidden = !!boxes.length || !!classification
-  $('detectionEmpty').innerHTML = boxes.length ? '' : '未检出超过阈值的漏焊点位<br><small>整板分类结果显示在上方</small>'
+  $('detectionEmpty').innerHTML = boxes.length ? '' : '未检出超过阈值的缺陷点位<br><small>整板分类结果显示在上方</small>'
   renderVerdict(classification, processed)
   $('callouts').replaceChildren()
   boxes.forEach((box,i)=>{
@@ -189,13 +195,34 @@ $('expand').onclick = async () => {
   } catch (err) { message('当前浏览器无法全屏显示：'+err.message) }
 }
 document.addEventListener('fullscreenchange',draw)
-function selectImage(input, source) {
+async function selectImage(input, source) {
   stopCamera()
+  const token=version
   currentRecordId = null
+  currentReadOnly=false
+  $('inspect').inert=false
+  $('run').hidden=false
+  document.querySelector('#work .toolbar').hidden=false
+  reviewOrigin='work'
+  inspectionInput = input
+  inspectionFilename=input instanceof File ? input.name : 'inspection.jpg'
+  $('alignmentStatus').hidden=true
   showImage(input, [], source, null)
   $('result').replaceChildren()
-  message('')
+  message('正在矫正板面并识别缺陷…')
+  try{
+    const blob=input instanceof Blob ? input : await (await fetch(input)).blob()
+    const form=new FormData()
+    form.append('image',blob,inspectionFilename)
+    form.append('station',$('inspect').elements.station.value)
+    const result=await api('/api/preview',form)
+    if (token!==version || currentRecordId) return
+    showImage(result.image || blob,result.boxes,'智能检测 · '+result.boxes.length+' 个点位',result.classification)
+    showAlignmentStatus(result.alignment)
+    message(result.issues?.length ? result.issues.join('；') : '识别完成，可补充工艺参数并生成检验单。')
+  }catch(error){if(token===version) message(error.message)}
 }
+
 for (const id of ['file','snap']) $(id).onchange = e => {
   const file = e.target.files[0]
   if (file) selectImage(file,'已载入图像')
@@ -228,15 +255,30 @@ $('camera').onclick = async () => {
       form.append('image',blob,'frame.jpg')
       form.append('station', $('inspect').elements.station.value)
       const result = await api('/api/preview',form)
-      if (token === version) showImage(blob,result.boxes,'实时检测 · '+result.boxes.length+' 个点位',result.classification)
+      if (token === version){
+        inspectionInput=blob
+        showImage(result.image || blob,result.boxes,'实时检测 · '+result.boxes.length+' 个点位',result.classification)
+        showAlignmentStatus(result.alignment)
+      }
       await new Promise(resolve => setTimeout(resolve,350))
     }
   } catch (err) { if (token === version) {stopCamera();message('采集失败：'+err.message)} }
 }
+function showAlignmentStatus(alignment){
+  $('alignmentStatus').hidden=!alignment
+  $('alignmentStatus').textContent=alignment ? '板面已矫正' : ''
+}
+
 function present(r) {
   if (typeof closeCorrection === 'function') closeCorrection()
   stopCamera()
   currentRecordId = r.id
+  currentReadOnly=!!r.readonly || !!r.exception_mode
+  $('inspect').inert=currentReadOnly
+  $('run').hidden=currentReadOnly
+  document.querySelector('#work .toolbar').hidden=currentReadOnly
+  inspectionInput='/api/records/'+r.id+'/image?original=1'
+  showAlignmentStatus(r.alignment)
   $('viewingFile').textContent = r.filename || ''
   if (typeof updateReviewNavigation === 'function') updateReviewNavigation(r)
   $('backToBatch').hidden = false
@@ -250,10 +292,16 @@ function present(r) {
     } catch(err) { message(err.message) }
   }
   showImage('/api/records/'+r.id+'/image',r.boxes,'已建档',r.classification)
+  const parameters=r.process_parameters || {}
   for (const key of ['station','batch','note']) $('inspect').elements[key].value = r[key] ?? ''
   $('stationName').textContent = r.station
   updateRate()
-  const findings = r.analysis.map(a=>'<div class="finding"><h3>'+esc(a.label)+'</h3><p>疑似原因 · '+esc(a.cause)+'</p><p>改进建议 · '+esc(a.action)+'</p><small>'+esc(a.evidence)+'</small></div>').join('')
+  const findings = r.analysis.filter(a=>a.label!=='未见明显缺陷').map(a=>'<div class="finding"><h3>'+esc(a.label)+'</h3><p>可能根因 · '+esc(a.cause)+'</p><p>改进建议 · '+esc(a.action)+'</p><small>'+esc(a.evidence)+'</small></div>').join('')
+  const sheet=[
+    ['检验编号',r.id.slice(0,12)],['采集时间',date(r.created)],['生产工位',r.station],['生产批次',r.batch],
+    ['回流峰值',r.temp!=null ? r.temp+' °C' : '未录入'],['回流时间',parameters.reflow_seconds!=null ? parameters.reflow_seconds+' 秒' : '未录入'],
+    ['焊膏批号',parameters.solder_batch || '未录入'],['检测模型',r.model_version || '历史版本'],
+  ].map(([name,value])=>'<div><dt>'+esc(name)+'</dt><dd>'+esc(value)+'</dd></div>').join('')
   const audit = r.reviews?.length ? '<details class="review-history"><summary>复查记录（'+r.reviews.length+' 次）</summary>'+r.reviews.map(item=>'<p>'+date(item.created)+'　'+esc(item.reviewer)+'　'+esc(item.decision)+'　'+esc(item.comment)+'</p>').join('')+'</details>' : ''
   const version = r.model_version || r.boxes[0]?.model || '历史记录未标明版本'
   const classification = r.classification
@@ -263,51 +311,54 @@ function present(r) {
   const manualOptions = ['漏焊','虚焊','冷焊','桥接','多锡','焊盘损伤','元件偏移','缺件','氧化','烧伤']
   const manualChecked = Array.isArray(r.manual) ? r.manual : []
   const manualTags = '<div class="manual-tags"><span>补标缺陷类型（可多选）</span>'+manualOptions.map(item=>'<label><input type="checkbox" name="manual" value="'+item+'"'+(manualChecked.includes(item) ? ' checked' : '')+'>'+item+'</label>').join('')+'</div>'
-  const review = r.review_required ? '<form id="review"><h3>员工复查'+(r.signed ? ' · 可重新修改' : '')+'</h3><p class="muted">检测模型 · '+esc(version)+(classification ? '　整板识别 · '+esc(classification.model_version) : '')+'<br>'+(r.auto_decision ? '机器初判 '+esc(r.auto_decision)+' · ' : '')+(r.signed ? '最近复查 '+esc(r.reviewer)+' '+date(r.signed) : '尚未人工复查')+'</p><input type="hidden" name="revision" value="'+(r.revision || 0)+'">'+manualTags+'<label>复查意见<textarea name="comment" maxlength="2000" rows="2" placeholder="记录缺陷位置、类型或修改原因">'+esc(r.comment)+'</textarea></label><label>当前结论<select name="decision" required><option value="">请选择</option><option value="合格">无缺陷 · 合格</option><option value="不合格">有缺陷 · 不合格</option></select></label><label>员工姓名<input name="reviewer" maxlength="80" required value="'+esc(r.reviewer)+'" placeholder="输入姓名"></label><button class="primary">保存复查结论</button>'+audit+'</form>' : audit
-  $('result').innerHTML='<article><div class="cardhead"><h2>检验单 · '+esc(r.batch)+'</h2><div class="viewactions"><span class="tag" data-state="'+esc(r.decision || '待检测')+'">'+esc(r.decision || '待检测')+'</span><button id="deleteCurrent" class="danger">删除检验单</button></div></div><div class="body"><small>'+date(r.created)+'　'+esc(r.station)+'　单号 '+r.id.slice(0,8)+'</small>'+verdict+'<h3>漏焊候选 '+r.boxes.length+' 项</h3><p>'+r.boxes.map((b,i)=>'#'+(i+1)+' '+esc(b.label)+' '+Math.round(b.score*100)+'%').join('　')+'</p>'+ (findings || '<p>未检出漏焊候选。</p>')+'</div>'+review+'</article>'
+  const review = r.review_required ? '<form id="review"><h3>'+(r.signed ? '复核已签字 · '+esc(r.reviewer) : '复核签字')+'</h3><p class="muted">机器初判 '+esc(r.auto_decision || r.decision)+' · '+(r.signed ? '签字时间 '+date(r.signed) : '请核对缺陷位置和检验结论后签字')+'</p><input type="hidden" name="revision" value="'+(r.revision || 0)+'"><details><summary>补充缺陷与复核意见</summary>'+manualTags+'<label>复核意见<textarea name="comment" maxlength="2000" rows="2">'+esc(r.comment)+'</textarea></label></details><label>复核结论<select name="decision" required><option value="合格">合格</option><option value="不合格">不合格</option></select></label><label>质检员签字<input name="reviewer" maxlength="80" required value="'+esc(r.reviewer || localStorage.getItem('pcbReviewer') || '')+'" placeholder="输入姓名"></label><button class="primary">确认结论并签字</button>'+audit+'</form>' : audit
+  $('result').innerHTML='<article><div class="cardhead"><h2>'+(r.exception_mode ? '异常复核单' : r.readonly ? '归档检验单 · 只读' : '自动检验单')+'</h2><div class="viewactions"><span class="tag" data-state="'+esc(r.decision || '待检测')+'">'+esc(r.decision || '待检测')+'</span><button id="deleteCurrent" class="danger">删除检验单</button></div></div><div class="body"><dl class="inspection-sheet">'+sheet+'</dl>'+verdict+'<h3>缺陷分析与改进建议 · '+r.boxes.length+' 个定位结果</h3><div class="findings-grid">'+(findings || '<p class="muted">当前模型未检出超过阈值的缺陷，请结合板面图像进行复核。</p>')+'</div>'+(r.note ? '<p class="record-note">现场记录 · '+esc(r.note)+'</p>' : '')+'</div>'+review+'</article>'
   if (r.issues?.length) {
     const warning = document.createElement('p')
     warning.className = 'hint'
     warning.textContent = '检测提示 · ' + r.issues.join('；')
     $('result').prepend(warning)
   }
-  if (r.review_required && typeof installCorrection === 'function') installCorrection(r)
+  if (r.review_required && !r.exception_mode && !r.readonly && typeof installCorrection === 'function') installCorrection(r)
+  $('deleteCurrent').hidden=currentReadOnly
   $('deleteCurrent').onclick = () => deleteRecord(r.id,r.batch)
   if ($('review')) $('review').elements.decision.value = r.decision || ''
   if ($('review')) $('review').onsubmit = async e => {
     e.preventDefault()
     const btn = e.submitter
+    localStorage.setItem('pcbReviewer',e.target.elements.reviewer.value.trim())
     btn.disabled = true
     try {
-      present(await api('/api/records/'+r.id+'/review',new FormData(e.target)))
+      present(await api(r.exception_mode ? '/api/exceptions/'+r.id : '/api/records/'+r.id+'/review',new FormData(e.target)))
       await refresh()
       if (r.batch_id) await openBatch(r.batch_id)
       await refreshWorkspace()
-      message(r.batch_id && activeBatch?.state === 'reviewing' ? '复查已保存，请手动导出最新报告完成批次。' : '复查已保存，合格率已更新。')
+      message(r.exception_mode ? '异常复核结论已单独保存。' : '复核已保存，检验结果已更新。')
     }
     catch(err){message(err.message)} finally {btn.disabled=false}
   }
 }
 $('inspect').onsubmit = async e => {
   e.preventDefault()
-  if (busy) return
+  if (busy || currentReadOnly) return
   busy = true
   for (const id of ['run','camera','file','snap','sample']) $(id).disabled=true
   $('run').textContent='正在检测…'
   try {
     const data = new FormData(e.target)
-    const blob = stream ? await capture() : await (await fetch($('photo').src)).blob()
+    const input=inspectionInput || $('photo').src
+    const blob = stream ? await capture() : input instanceof Blob ? input : await (await fetch(input)).blob()
     stopCamera()
-    data.append('image',blob,'inspection.jpg')
+    data.append('image',blob,inspectionFilename)
     const r = await api('/api/records',data)
     present(r)
     await refresh()
-    message('检验单已生成并自动判定，抽样图片可进入抽样复查，不合格图片进入异常复查。')
+    message('检验单已自动生成，请核对结果并签字。')
     $('result').scrollIntoView({behavior:'smooth'})
   } catch(err) {message(err.message)} finally {
     busy=false
     for (const id of ['run','camera','file','snap','sample']) $(id).disabled=false
-    $('run').textContent='检测缺陷并建档 →'
+    $('run').textContent='检测并生成检验单'
   }
 }
 function recordRow(r) {
@@ -358,14 +409,30 @@ function renderHistory() {
 async function refresh() {
   historyRows=await api('/api/records')
   updateRate()
-  $('stats').textContent=historyRows.length+' 份检验单　/　'+historyRows.filter(r=>r.sampled && r.revision <= r.sample_revision).length+' 份抽样待复查'
+  $('stats').textContent=historyRows.length+' 份检验单　/　'+historyRows.filter(needsReview).length+' 份待签字'
   renderHistory()
   renderStatistics()
+  renderSingleReviewQueue()
 }
+function needsReview(record){
+  if (record.readonly) return false
+  return (!record.batch_id && !record.signed)
+    || (record.sampled && record.revision<=record.sample_revision)
+    || (record.decision==='不合格' && !record.signed)
+}
+function renderSingleReviewQueue(){
+  const list=$('singleReviewList')
+  list.replaceChildren()
+  for (const record of historyRows.filter(item=>!item.batch_id && needsReview(item))){
+    list.append(recordRow(record))
+  }
+  $('singleReviewPanel').hidden=!list.children.length
+}
+
 function renderStatistics() {
   const signed = historyRows.filter(r=>['合格','不合格'].includes(r.decision))
   const passed = signed.filter(r=>r.decision === '合格').length
-  const pending = historyRows.filter(r=>r.sampled && r.revision <= r.sample_revision).length
+  const pending = historyRows.filter(needsReview).length+exceptionPending
   $('totalMetric').textContent = historyRows.length
   $('pendingMetric').textContent = pending
   $('pendingCount').textContent = pending
@@ -390,8 +457,8 @@ function updateRate() {
 $('inspect').elements.batch.addEventListener('input',updateRate)
 $('inspect').elements.station.addEventListener('input',e=>{$('stationName').textContent=e.target.value.trim() || '—'})
 $('pendingLink').onclick = () => {
-  switchPage('processing')
-  message('打开检测批次中的抽样清单，查看抽样待复查图片。')
+  switchPage('rejected')
+  renderSingleReviewQueue()
 }
 function switchPage(page) {
   if (busy) return
@@ -399,23 +466,32 @@ function switchPage(page) {
   currentPage = page
   for (const name of ['import','processing','rejected','logs','batch','work','training']) $(name).hidden = name !== page
   const descriptions = {
-    import:['导入图片','选择本次图片，创建检测批次'],
+    import:['批量导入','导入生产图片，同批工艺参数自动写入每份检验单'],
     processing:['检测批次','打开批次查看进度、处理失败项或安排抽样复查'],
-    rejected:['异常复查','处理检测批次中的不合格图片，手动导出报告完成批次'],
-    logs:['批次记录','按批次查询合格率、图片结果与复查记录'],
+    rejected:['异常复核','核对缺陷与检验结论，完成质检员签字'],
+    logs:['质量档案','追溯采集图像、工艺参数、分析结果与签字记录'],
     batch:['批次处理','查看检测进度、逐图结果和抽样清单'],
-    work:['图片结果','查看检测结果，抽样图片和异常图片可保存复查结论'],
+    work:['采集检测','采集板面图像，自动分析缺陷并生成检验单'],
     training:['模型训练','上传并标注样本，训练完成后自动更新检测模型'],
   }
   $('title').textContent=descriptions[page][0]
   $('pageDescription').textContent=descriptions[page][1]
   if (page === 'training' && !$('trainingFrame').getAttribute('src')) $('trainingFrame').src=$('trainingFrame').dataset.src
   $('trainingLink').classList.toggle('active',page==='training')
-  const owner = page === 'batch' ? batchOrigin : page === 'work' ? (reviewOrigin === 'batch' ? batchOrigin : reviewOrigin) : page
+  const owner = page === 'batch' ? batchOrigin : page === 'work' ? (reviewOrigin === 'work' ? 'work' : reviewOrigin === 'batch' ? batchOrigin : reviewOrigin) : page
   document.querySelectorAll('.nav[data-page]').forEach(n=>n.classList.toggle('active',n.dataset.page===owner))
   message('')
 }
 document.querySelectorAll('.nav[data-page]').forEach(n=>n.onclick=()=>{
+  if (n.dataset.page==='work' && currentRecordId){
+    currentReadOnly=false;currentRecordId=null;inspectionInput=null
+    $('inspect').inert=false
+    $('run').hidden=false
+    document.querySelector('#work .toolbar').hidden=false
+    $('result').replaceChildren()
+    showImage('/static/sample-missing.png?v=20261110b',[],'样例板面')
+    reviewOrigin='work'
+  }
   switchPage(n.dataset.page)
   refresh().catch(err=>message(err.message))
   refreshWorkspace().catch(err=>message(err.message))
@@ -428,10 +504,12 @@ $('voice').onclick=()=>{
   speech.lang='zh-CN'
   speech.onresult=e=>{const note=$('inspect').elements.note;note.value=(note.value+' '+e.results[0][0].transcript).trim().slice(0,2000);message('语音已转写，请核对现场备注。')}
   speech.onerror=e=>message('语音识别失败：'+e.error)
-  speech.onend=()=>{$('voice').disabled=false;$('voice').textContent='◎ 语音录入'}
-  speech.start()
+  speech.onend=()=>{$('voice').disabled=false;$('voice').textContent='语音录入'}
+  try{speech.start()}catch(error){message('无法启动语音录入：'+error.message);return}
   $('voice').disabled=true
   $('voice').textContent='正在聆听…'
 }
 window.addEventListener('pagehide',stopCamera)
 refresh().catch(err=>message(err.message))
+
+switchPage('work')

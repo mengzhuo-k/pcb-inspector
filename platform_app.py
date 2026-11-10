@@ -7,6 +7,7 @@ dataset and model lifecycle.
 """
 from __future__ import annotations
 
+import base64
 import io
 import hashlib
 import json
@@ -32,6 +33,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ.get("PCB_PLATFORM_DATA", ROOT / "data/platform")).resolve()
 IMAGES = DATA / "images"
+REFERENCES = DATA / "references"
 MODELS = DATA / "models"
 RUNS = DATA / "runs"
 LOGS = DATA / "logs"
@@ -72,6 +74,7 @@ QUEUE: "queue.Queue[str]" = queue.Queue()
 PROCS: dict[str, subprocess.Popen] = {}
 WORKER_STARTED = False
 WORKER_LOCK = threading.Lock()
+AUTO_TRAIN = os.environ.get("PCB_AUTO_TRAIN", "1") == "1"
 
 
 def now() -> str:
@@ -98,8 +101,18 @@ def json_value(value, default=None):
         return default
 
 
+def deploy_updated_detector(conn, pid, mid, station):
+    # The empty station supplies the detector to unassigned inspection stations.
+    for target in dict.fromkeys((station or "", "")):
+        conn.execute("UPDATE deployments SET active=0 WHERE project_id=? AND station=? AND active=1",
+                     (pid, target))
+        conn.execute("INSERT INTO deployments(project_id,station,model_id,active,created) VALUES(?,?,?,1,?)",
+                     (pid, target, mid, now()))
+    conn.execute("UPDATE models SET published=1 WHERE id=?", (mid,))
+
+
 def initialize() -> None:
-    for folder in (DATA, IMAGES, MODELS, RUNS, LOGS):
+    for folder in (DATA, IMAGES, REFERENCES, MODELS, RUNS, LOGS):
         folder.mkdir(parents=True, exist_ok=True)
     with closing(sqlite3.connect(DB)) as conn, conn:
         conn.executescript("""
@@ -121,6 +134,21 @@ def initialize() -> None:
             class TEXT NOT NULL, x1 REAL, y1 REAL, x2 REAL, y2 REAL,
             subtype TEXT DEFAULT '', annotator TEXT DEFAULT '', created TEXT);
         CREATE INDEX IF NOT EXISTS labels_image ON labels(image_id);
+        CREATE TABLE IF NOT EXISTS annotation_views(
+            image_id TEXT PRIMARY KEY, settings TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS alignment_references(
+            project_id TEXT PRIMARY KEY, image_id TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS alignment_sources(
+            project_id TEXT PRIMARY KEY, image_id TEXT NOT NULL, path TEXT NOT NULL,
+            filename TEXT, width INTEGER, height INTEGER, sha256 TEXT);
+        CREATE TABLE IF NOT EXISTS solder_templates(
+            project_id TEXT PRIMARY KEY, reference_id TEXT NOT NULL,
+            sites TEXT NOT NULL, revision INTEGER NOT NULL, updated TEXT);
+        CREATE TABLE IF NOT EXISTS model_updates(
+            project_id TEXT PRIMARY KEY, revision INTEGER DEFAULT 1,
+            trained_revision INTEGER DEFAULT 0, target_revision INTEGER DEFAULT 0,
+            job_id TEXT DEFAULT '', state TEXT DEFAULT 'pending',
+            message TEXT DEFAULT '', changed REAL DEFAULT 0);
         CREATE TABLE IF NOT EXISTS datasets(
             id TEXT PRIMARY KEY, project_id TEXT NOT NULL, version INTEGER,
             template TEXT NOT NULL, split_policy TEXT DEFAULT 'group',
@@ -143,8 +171,34 @@ def initialize() -> None:
             id TEXT PRIMARY KEY, project_id TEXT, path TEXT, predicted TEXT,
             note TEXT, state TEXT DEFAULT 'open', image_id TEXT, created TEXT);
         """)
+        conn.execute("BEGIN IMMEDIATE")
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(labels)")}
+        if "polygon" not in columns:
+            conn.execute("ALTER TABLE labels ADD COLUMN polygon TEXT DEFAULT '[]'")
+        if "alignment" not in {r[1] for r in conn.execute("PRAGMA table_info(images)")}:
+            conn.execute("ALTER TABLE images ADD COLUMN alignment TEXT")
+        if "testing_started" not in {r[1] for r in conn.execute("PRAGMA table_info(jobs)")}:
+            conn.execute("ALTER TABLE jobs ADD COLUMN testing_started REAL")
+            for pid, station in conn.execute("SELECT id,station FROM projects").fetchall():
+                latest = conn.execute("""SELECT m.id,j.config FROM models m JOIN jobs j ON j.id=m.job_id
+                    WHERE m.project_id=? AND j.template='det' AND j.state='done'
+                    ORDER BY m.created DESC,m.rowid DESC LIMIT 1""", (pid,)).fetchone()
+                if latest and json_value(latest[1], {}).get("auto_publish"):
+                    active = conn.execute("""SELECT model_id FROM deployments
+                        WHERE project_id=? AND station=? AND active=1""", (pid, station)).fetchone()
+                    if not active or active[0] == latest[0]:
+                        deploy_updated_detector(conn, pid, latest[0], station)
     with db() as conn:
+        for source in conn.execute("""SELECT i.* FROM images i JOIN alignment_references r
+            ON i.id=r.image_id LEFT JOIN alignment_sources s ON s.project_id=r.project_id
+            WHERE s.project_id IS NULL""").fetchall():
+            store_reference(conn, source["project_id"], dict(source))
         conn.execute("UPDATE jobs SET state='failed', error='平台重启，任务中断' WHERE state='running'")
+        conn.execute("""UPDATE model_updates SET state='pending',job_id='',message=''
+            WHERE state IN ('preparing','queued','running') AND
+            (job_id='' OR job_id NOT IN (SELECT id FROM jobs WHERE state='queued'))""")
+        if AUTO_TRAIN:
+            conn.execute("INSERT OR IGNORE INTO model_updates(project_id) SELECT id FROM projects")
         # No review stage in the employee flow: labels saved before this change
         # are treated as stored samples.
         conn.execute("""UPDATE images SET review_status='approved',
@@ -167,6 +221,33 @@ def initialize() -> None:
         for dataset in conn.execute("SELECT id FROM datasets").fetchall():
             if not conn.execute("SELECT 1 FROM dataset_snapshots WHERE dataset_id=?", (dataset["id"],)).fetchone():
                 freeze_dataset(conn, dataset["id"], legacy=True)
+    # Older editors saved the transform but only displayed a temporary JPEG.
+    with db() as conn:
+        legacy_views = conn.execute("""SELECT i.*,v.settings FROM images i JOIN annotation_views v
+            ON v.image_id=i.id WHERE i.alignment IS NULL""").fetchall()
+    for row in legacy_views:
+        saved = json_value(row["settings"], {}).get("alignment")
+        if saved:
+            with db() as conn:
+                ref = board_reference(conn, row["project_id"])
+                if not ref or ref["id"] != saved["reference_id"]:
+                    ref = conn.execute("SELECT * FROM images WHERE id=? AND project_id=?",
+                                       (saved["reference_id"], row["project_id"])).fetchone()
+                if not ref and re.fullmatch(r"[a-f0-9]{32}|review-[a-f0-9]{64}", saved["reference_id"]):
+                    ref = {"path": REFERENCES / row["project_id"] / (saved["reference_id"] + ".jpg"),
+                           "id": saved["reference_id"]}
+            if ref and Path(ref["path"]).is_file() and Path(row["path"]).is_file():
+                from pcb_alignment import align
+                try:
+                    result = align(row["path"], ref["path"], matrix=saved["matrix"])
+                except (ValueError, OSError):
+                    app.logger.exception("无法恢复图片 %s 的对齐结果", row["id"])
+                    continue
+                with db() as conn:
+                    conn.execute("BEGIN IMMEDIATE")
+                    current = conn.execute("SELECT * FROM images WHERE id=?", (row["id"],)).fetchone()
+                    if current and current["alignment"] is None and current["path"] == row["path"]:
+                        persist_alignment(conn, current, ref["id"], result)
     start_worker()
 
 
@@ -182,10 +263,15 @@ def image(iid):
     with db() as conn:
         row = conn.execute("SELECT * FROM images WHERE id=?", (iid,)).fetchone()
         labels = conn.execute("SELECT * FROM labels WHERE image_id=? ORDER BY id", (iid,)).fetchall()
+        view = conn.execute("SELECT settings FROM annotation_views WHERE image_id=?", (iid,)).fetchone()
     if not row:
         abort(404, "图片不存在")
     result = dict(row)
+    result["alignment"] = json_value(row["alignment"])
     result["labels"] = [dict(item) for item in labels]
+    for label in result["labels"]:
+        label["polygon"] = json_value(label.get("polygon"), [])
+    result["annotation_view"] = json_value(view["settings"], {}) if view else {}
     result["url"] = f"api/images/{iid}/file"
     return result
 
@@ -312,6 +398,8 @@ def upload_images(pid):
                           fields["camera"], fields["lighting"], fields["captured_at"],
                           digest, "new", primary or None, "pending", fields["note"], now()))
         saved.append(iid)
+    with db() as conn:
+        mark_model_update(conn, pid, awaiting_labels=True)
     return jsonify(saved=saved)
 
 
@@ -323,14 +411,15 @@ def project_summary(pid):
             sum(CASE WHEN state='new' THEN 1 ELSE 0 END) AS new,
             sum(CASE WHEN state='labeled' AND review_status='pending' THEN 1 ELSE 0 END) AS waiting_review,
             sum(CASE WHEN review_status='approved' THEN 1 ELSE 0 END) AS approved,
-            sum(CASE WHEN review_status='rejected' THEN 1 ELSE 0 END) AS rejected
+            sum(CASE WHEN review_status='rejected' THEN 1 ELSE 0 END) AS rejected,
+            sum(CASE WHEN review_status='retake' THEN 1 ELSE 0 END) AS retake
             FROM images WHERE project_id=?""", (pid,)).fetchone()
         feedback = conn.execute("SELECT count(*) FROM feedback WHERE project_id=? AND state='open'",
                                 (pid,)).fetchone()[0]
     return jsonify(dict(total=row["total"] or 0, new=row["new"] or 0,
                         waiting_review=0,
                         approved=row["approved"] or 0, rejected=row["rejected"] or 0,
-                        feedback_open=feedback))
+                        feedback_open=feedback, retake=row["retake"] or 0))
 
 
 @app.get("/api/projects/<pid>/images")
@@ -338,6 +427,13 @@ def list_images(pid):
     project(pid)
     clauses = ["project_id=?"]
     values = [pid]
+    processing = request.args.get("processing")
+    if processing == "processed":
+        clauses.append("state!='new' AND review_status='approved'")
+    elif processing == "unprocessed":
+        clauses.append("(state='new' OR review_status!='approved')")
+    elif processing:
+        abort(400, "处理状态无效")
     for key, column in (("state", "state"), ("review", "review_status"), ("class", "primary_class")):
         value = request.args.get(key)
         if value:
@@ -361,6 +457,11 @@ def image_detail(iid):
     return jsonify(image(iid))
 
 
+def require_editable(row):
+    if row["state"] != "new" and row["review_status"] == "approved":
+        abort(409, "已处理图片仅供查看")
+
+
 @app.delete("/api/images/<iid>")
 def delete_image(iid):
     with db() as conn:
@@ -368,16 +469,25 @@ def delete_image(iid):
         row = conn.execute("SELECT * FROM images WHERE id=?", (iid,)).fetchone()
         if not row:
             abort(404, "图片不存在或已删除")
-        frozen = conn.execute("SELECT 1 FROM dataset_snapshots WHERE image_id=? LIMIT 1", (iid,)).fetchone()
+        snapshots = conn.execute("SELECT metadata FROM dataset_snapshots WHERE image_id=?", (iid,)).fetchall()
+        retained = {Path(json.loads(item["metadata"])["path"]).resolve() for item in snapshots}
         path = Path(row["path"]).resolve()
         if not path.is_relative_to(IMAGES.resolve()):
             abort(400, "图片路径超出图库")
+        reference = board_reference(conn, row["project_id"])
+        if reference and reference["id"] == iid:
+            store_reference(conn, row["project_id"], dict(row))
         conn.execute("DELETE FROM labels WHERE image_id=?", (iid,))
         conn.execute("DELETE FROM feedback WHERE image_id=?", (iid,))
+        conn.execute("DELETE FROM annotation_views WHERE image_id=?", (iid,))
         conn.execute("DELETE FROM images WHERE id=?", (iid,))
-    if not frozen:
-        path.unlink(missing_ok=True)
-    return jsonify(ok=True, retained_in_versions=bool(frozen))
+        mark_model_update(conn, row["project_id"])
+    paths = {path}
+    if row["alignment"]:
+        paths.add(path.with_name(iid + ".jpg"))
+    for unused in paths - retained:
+        unused.unlink(missing_ok=True)
+    return jsonify(ok=True, retained_in_versions=bool(snapshots))
 
 
 @app.get("/api/images/<iid>/file")
@@ -396,6 +506,252 @@ def image_file(iid):
         buffer.seek(0)
         return send_file(buffer, mimetype="image/jpeg")
     return send_file(path, mimetype="image/jpeg")
+
+
+def board_reference(conn, pid):
+    source = conn.execute("""SELECT s.image_id AS id,s.filename,s.path,s.width,s.height,s.sha256
+        FROM alignment_sources s JOIN alignment_references r
+        ON r.project_id=s.project_id AND r.image_id=s.image_id WHERE s.project_id=?""", (pid,)).fetchone()
+    if not source:
+        source = conn.execute("""SELECT i.* FROM images i JOIN alignment_references r
+            ON i.id=r.image_id WHERE r.project_id=?""", (pid,)).fetchone()
+    return dict(source) if source else None
+
+
+def store_reference(conn, pid, source):
+    folder = REFERENCES / pid
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / (source["id"] + ".jpg")
+    if Path(source["path"]).resolve() != target.resolve():
+        temporary = folder / (uuid.uuid4().hex + ".tmp")
+        try:
+            shutil.copyfile(source["path"], temporary)
+            os.replace(temporary, target)
+        finally:
+            temporary.unlink(missing_ok=True)
+    conn.execute("INSERT OR REPLACE INTO alignment_references(project_id,image_id) VALUES(?,?)", (pid, source["id"]))
+    conn.execute("INSERT OR REPLACE INTO alignment_sources VALUES(?,?,?,?,?,?,?)",
+                 (pid, source["id"], str(target), source["filename"], source["width"], source["height"], source["sha256"]))
+
+
+@app.route("/api/projects/<pid>/alignment-reference", methods=["GET", "POST"])
+def alignment_reference(pid):
+    project(pid)
+    with db() as conn:
+        if request.method == "POST":
+            conn.execute("BEGIN IMMEDIATE")
+            options = request.get_json(silent=True) or {}
+            if options.get("only_if_empty") and board_reference(conn, pid):
+                abort(409, "项目已有标准图，请重新打开图片")
+            upload = request.files.get("image")
+            if upload:
+                try:
+                    with Image.open(upload.stream) as raw:
+                        if raw.width * raw.height > 24_000_000:
+                            abort(400, "标准图超过 2400 万像素")
+                        picture = ImageOps.exif_transpose(raw).convert("RGB")
+                except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
+                    abort(400, "标准图无法读取")
+                iid = uuid.uuid4().hex
+                folder = REFERENCES / pid
+                folder.mkdir(parents=True, exist_ok=True)
+                target = folder / (iid + ".jpg")
+                picture.save(target, "JPEG", quality=94)
+                source = dict(id=iid, path=str(target), filename=(upload.filename or "标准图.jpg")[:200],
+                              width=picture.width, height=picture.height,
+                              sha256=hashlib.sha256(target.read_bytes()).hexdigest())
+            else:
+                iid = (request.get_json(silent=True) or {}).get("image_id")
+                row = conn.execute("SELECT * FROM images WHERE id=? AND project_id=?", (iid, pid)).fetchone()
+                if not row:
+                    abort(400, "请选择当前项目中的标准图")
+                source = dict(row)
+            store_reference(conn, pid, source)
+            conn.execute("DELETE FROM solder_templates WHERE project_id=? AND reference_id<>?", (pid, source["id"]))
+        source = board_reference(conn, pid)
+    return jsonify({key: source[key] for key in ("id", "filename", "sha256")} if source else None)
+
+
+@app.get("/api/projects/<pid>/alignment-reference/file")
+def reference_file(pid):
+    with db() as conn:
+        reference = board_reference(conn, pid)
+    if not reference or request.args.get("id") != reference["id"]:
+        abort(409, "标准图已变化，请重新打开图片")
+    return send_file(reference["path"], mimetype="image/jpeg")
+
+
+def site_template(conn, pid):
+    row = conn.execute("""SELECT t.* FROM solder_templates t JOIN alignment_references r
+        ON r.project_id=t.project_id AND r.image_id=t.reference_id WHERE t.project_id=?""", (pid,)).fetchone()
+    if not row:
+        return None
+    return dict(project_id=pid, reference_id=row["reference_id"], sites=json_value(row["sites"], []),
+                revision=row["revision"], updated=row["updated"])
+
+
+@app.route("/api/projects/<pid>/solder-template", methods=["GET", "POST"])
+def solder_template(pid):
+    project(pid)
+    if request.method == "GET":
+        with db() as conn:
+            return jsonify(site_template(conn, pid))
+    payload = request.get_json(silent=True) or {}
+    with db() as conn:
+        reference = board_reference(conn, pid)
+        existing = conn.execute("SELECT revision,reference_id,sites FROM solder_templates WHERE project_id=?", (pid,)).fetchone()
+    if not reference:
+        abort(400, "请先设置标准图")
+    if payload.get("reference_id") != reference["id"]:
+        abort(409, "标准图已变化，请重新打开图片")
+    expected = existing["revision"] if existing else 0
+    if payload.get("revision", 0) != expected:
+        abort(409, "点位模板已被修改，请重新打开图片")
+    if payload.get("action") == "detect":
+        if existing and existing["reference_id"] == reference["id"]:
+            sites = json_value(existing["sites"], [])
+        else:
+            from solder_sites import detect_sites
+            try:
+                sites = detect_sites(reference["path"])
+            except (ValueError, OSError) as exc:
+                abort(400, str(exc))
+    elif payload.get("action") == "save":
+        sites = payload.get("sites")
+    else:
+        abort(400, "点位模板操作无效")
+    if not isinstance(sites, list) or len(sites) > 3000:
+        abort(400, "点位数量无效，最多 3000 处")
+    cleaned, ids = [], set()
+    for site in sites:
+        if not isinstance(site, dict) or not isinstance(site.get("id"), str):
+            abort(400, "点位格式无效")
+        sid = site["id"]
+        if not sid or len(sid) > 80 or sid in ids:
+            abort(400, "点位编号重复或无效")
+        try:
+            x1, y1, x2, y2 = (float(site[key]) for key in ("x1", "y1", "x2", "y2"))
+        except (KeyError, TypeError, ValueError):
+            abort(400, "点位坐标无效")
+        if not all(0 <= v <= 1 for v in (x1, y1, x2, y2)) or x1 >= x2 or y1 >= y2:
+            abort(400, "点位范围无效")
+        ids.add(sid)
+        cleaned.append(dict(id=sid, x1=x1, y1=y1, x2=x2, y2=y2,
+                            origin="manual" if site.get("origin") == "manual" else "auto"))
+    with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        current_ref = conn.execute("SELECT image_id FROM alignment_references WHERE project_id=?", (pid,)).fetchone()
+        current = conn.execute("SELECT revision FROM solder_templates WHERE project_id=?", (pid,)).fetchone()
+        if not current_ref or current_ref["image_id"] != reference["id"] or (current["revision"] if current else 0) != expected:
+            abort(409, "标准图或点位模板已变化，请重新打开图片")
+        conn.execute("INSERT OR REPLACE INTO solder_templates VALUES(?,?,?,?,?)",
+                     (pid, reference["id"], json.dumps(cleaned), expected + 1, now()))
+        result = site_template(conn, pid)
+    return jsonify(result)
+
+
+def persist_alignment(conn, row, reference_id, result):
+    data = base64.b64decode(result["preview"].split(",", 1)[1])
+    digest = hashlib.sha256(data).hexdigest()
+    path = Path(row["path"]).with_name(row["id"] + "-aligned.jpg")
+    temporary = path.with_suffix(".tmp")
+    try:
+        temporary.write_bytes(data)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+    alignment = dict(matrix=result["matrix"], reference_id=reference_id)
+    conn.execute("""UPDATE images SET path=?,sha256=?,width=?,height=?,alignment=?,revision=revision+1
+        WHERE id=?""", (str(path), digest, result["width"], result["height"], json.dumps(alignment), row["id"]))
+
+
+@app.post("/api/images/<iid>/alignment")
+def image_alignment(iid):
+    from pcb_alignment import align
+    row = image(iid)
+    if row["alignment"]:
+        abort(409, "图片已完成对齐，请重新打开")
+    payload = request.get_json(silent=True) or {}
+    with db() as conn:
+        reference = board_reference(conn, row["project_id"])
+    if not reference:
+        abort(400, "请先打开正面图片，将其设为标准图")
+    if payload.get("reference_id", reference["id"]) != reference["id"]:
+        abort(409, "标准图已更新，请重新对齐")
+    try:
+        result = align(row["path"], reference["path"], payload.get("source_points"),
+                       payload.get("reference_points"), payload.get("matrix"))
+    except (ValueError, OSError) as exc:
+        abort(400, str(exc))
+    with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        current = conn.execute("SELECT * FROM images WHERE id=?", (iid,)).fetchone()
+        if not current or current["revision"] != row["revision"] or current["alignment"]:
+            abort(409, "图片已变化，请重新打开")
+        ref = board_reference(conn, row["project_id"])
+        if not ref or ref["id"] != reference["id"]:
+            abort(409, "标准图已变化，请重新打开")
+        persist_alignment(conn, current, reference["id"], result)
+    result["reference_id"] = reference["id"]
+    if payload.get("include_preview") is False:
+        result.pop("preview")
+    return jsonify(result)
+
+
+def annotation_settings(value, pid):
+    if not isinstance(value, dict):
+        abort(400, "标注视图格式无效")
+    flags = value.get("quality_flags", [])
+    allowed = {"blur", "glare", "occlusion", "cropped", "retake"}
+    if not isinstance(flags, list) or any(not isinstance(flag, str) or flag not in allowed for flag in flags):
+        abort(400, "图片质量标记无效")
+    disabled = value.get("alignment_disabled", False)
+    if not isinstance(disabled, bool):
+        abort(400, "对齐显示设置无效")
+    result = dict(quality_flags=sorted(set(flags)), quality_note=str(value.get("quality_note", ""))[:500],
+                  alignment_disabled=disabled)
+    alignment = value.get("alignment")
+    if alignment:
+        if not isinstance(alignment, dict):
+            abort(400, "对齐参数无效")
+        from pcb_alignment import validate_matrix
+        try:
+            matrix = validate_matrix(alignment.get("matrix")).tolist()
+        except ValueError as exc:
+            abort(400, str(exc))
+        with db() as conn:
+            ref = conn.execute("""SELECT id FROM images WHERE id=? AND project_id=?
+                UNION SELECT image_id AS id FROM alignment_references WHERE image_id=? AND project_id=?""",
+                               (alignment.get("reference_id"), pid, alignment.get("reference_id"), pid)).fetchone()
+        if not ref:
+            abort(400, "标准图已删除或不属于当前项目，请重新对齐")
+        result["alignment"] = dict(reference_id=ref["id"], matrix=matrix)
+    return result
+
+
+def label_polygon(value):
+    if value == []:
+        return []
+    if not isinstance(value, list) or len(value) != 4:
+        abort(400, "标注四角坐标无效")
+    points = []
+    for point in value:
+        if not isinstance(point, list) or len(point) != 2:
+            abort(400, "标注四角坐标无效")
+        try:
+            x, y = map(float, point)
+        except (TypeError, ValueError):
+            abort(400, "标注四角坐标无效")
+        if not (0 <= x <= 1 and 0 <= y <= 1):
+            abort(400, "标注四角超出原图范围")
+        points.append([x, y])
+    turns = []
+    for index in range(4):
+        a, b, c = (points[(index + offset) % 4] for offset in range(3))
+        turns.append((b[0]-a[0])*(c[1]-b[1]) - (b[1]-a[1])*(c[0]-b[0]))
+    if not (all(turn > 1e-12 for turn in turns) or all(turn < -1e-12 for turn in turns)):
+        abort(400, "标注四角面积无效")
+    return points
 
 
 @app.post("/api/images/<iid>/labels")
@@ -417,25 +773,168 @@ def save_labels(iid):
             abort(400, "标注坐标无效")
         if not all(0 <= value <= 1 for value in (x1, y1, x2, y2)) or x1 >= x2 or y1 >= y2:
             abort(400, "标注框面积无效")
-    primary = payload.get("primary_class") or None
-    if primary and primary not in dict(CLS_CLASSES):
+        polygon = label_polygon(box.get("polygon", []))
+        box["polygon"] = polygon
+        if polygon:
+            box.update(x1=min(point[0] for point in polygon), y1=min(point[1] for point in polygon),
+                       x2=max(point[0] for point in polygon), y2=max(point[1] for point in polygon))
+    primary = payload.get("primary_class", row["primary_class"]) or None
+    if primary and primary not in dict(CLS_CLASSES) and primary != row["primary_class"]:
         abort(400, "整板类型无效")
     annotator = str(payload.get("annotator", ""))[:80]
-    note = str(payload.get("note", ""))[:500]
+    note = str(payload.get("note", row["note"]))[:500]
+    view = annotation_settings(payload.get("annotation_view", row["annotation_view"]), row["project_id"])
+    retake = bool(view["quality_flags"])
     with db() as conn:
         conn.execute("BEGIN IMMEDIATE")
-        if not conn.execute("SELECT 1 FROM images WHERE id=?", (iid,)).fetchone():
+        current = conn.execute("SELECT * FROM images WHERE id=?", (iid,)).fetchone()
+        if not current:
             abort(404, "图片已删除，请刷新图库")
+        require_editable(current)
+        if "revision" in payload and payload["revision"] != current["revision"]:
+            abort(409, "这张图已被其他人修改，请重新打开后再保存")
         conn.execute("DELETE FROM labels WHERE image_id=?", (iid,))
-        conn.executemany("""INSERT INTO labels(image_id,class,x1,y1,x2,y2,subtype,annotator,created)
-            VALUES(?,?,?,?,?,?,?,?,?)""",
+        conn.executemany("""INSERT INTO labels(image_id,class,x1,y1,x2,y2,subtype,annotator,created,polygon)
+            VALUES(?,?,?,?,?,?,?,?,?,?)""",
                          [(iid, box["class"], float(box["x1"]), float(box["y1"]),
                            float(box["x2"]), float(box["y2"]),
-                           str(box.get("subtype", ""))[:40], annotator, now()) for box in boxes])
-        conn.execute("""UPDATE images SET state='labeled',review_status='approved',
+                           str(box.get("subtype", ""))[:40], annotator, now(), json.dumps(box["polygon"])) for box in boxes])
+        conn.execute("INSERT OR REPLACE INTO annotation_views VALUES(?,?)", (iid, json.dumps(view)))
+        conn.execute("""UPDATE images SET state=?,review_status=?,
             reviewer='自动',reviewed_at=?,primary_class=?,note=?,revision=revision+1 WHERE id=?""",
-                     (now(), primary, note, iid))
+                     ("retake" if retake else "labeled", "retake" if retake else "approved",
+                      now(), primary, note, iid))
+        mark_model_update(conn, row["project_id"])
     return jsonify(image(iid))
+
+
+def mark_model_update(conn, pid, awaiting_labels=False):
+    if not AUTO_TRAIN:
+        return
+    if awaiting_labels:
+        conn.execute("""INSERT INTO model_updates(project_id,state,message,changed)
+            VALUES(?,'waiting','新图片等待保存缺陷标注',?)
+            ON CONFLICT(project_id) DO UPDATE SET
+            state=CASE WHEN state IN ('pending','preparing','queued','running') THEN state ELSE 'waiting' END,
+            message=CASE WHEN state IN ('pending','preparing','queued','running') THEN message ELSE '新图片等待保存缺陷标注' END,
+            changed=excluded.changed""", (pid, time.time()))
+        return
+    conn.execute("""INSERT INTO model_updates(project_id,changed) VALUES(?,?)
+        ON CONFLICT(project_id) DO UPDATE SET revision=revision+1,
+        state=CASE WHEN state IN ('preparing','queued','running') THEN state ELSE 'pending' END,
+        message='',changed=excluded.changed""", (pid, time.time()))
+
+
+def latest_test(conn, pid=None):
+    query = "SELECT id,state,testing_started FROM jobs WHERE testing_started IS NOT NULL"
+    params = ()
+    if pid:
+        query += " AND project_id=?"
+        params = (pid,)
+    row = conn.execute(query + " ORDER BY (state='running') DESC,testing_started DESC LIMIT 1", params).fetchone()
+    return dict(row) if row else None
+
+
+@app.get("/api/model-testing")
+def model_testing():
+    with db() as conn:
+        return jsonify(latest_test(conn))
+
+
+@app.route("/api/projects/<pid>/model-update", methods=["GET", "POST"])
+def model_update_status(pid):
+    project(pid)
+    with db() as conn:
+        if request.method == "POST":
+            if not AUTO_TRAIN:
+                abort(400, "自动训练未启用")
+            mark_model_update(conn, pid)
+        update = conn.execute("SELECT * FROM model_updates WHERE project_id=?", (pid,)).fetchone()
+        testing = latest_test(conn, pid)
+        latest = conn.execute("SELECT id,version,created,published FROM models WHERE project_id=? ORDER BY created DESC,rowid DESC LIMIT 1", (pid,)).fetchone()
+        counts = conn.execute("""SELECT count(*) AS total,
+            sum(CASE WHEN review_status='approved' THEN 1 ELSE 0 END) AS saved
+            FROM images WHERE project_id=?""", (pid,)).fetchone()
+        job = conn.execute("SELECT state,error,model_id FROM jobs WHERE id=?", (update["job_id"],)).fetchone() if update else None
+    result = dict(update) if update else dict(state="waiting", message="上传图片并保存缺陷标注后自动更新模型")
+    if job and job["state"] == "running":
+        result["state"] = "running"
+    result.update(testing=testing, latest_model=dict(latest) if latest else None,
+                  images=counts["total"], saved=counts["saved"] or 0)
+    return jsonify(result)
+
+
+def prepare_model_update(pid):
+    with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        update = conn.execute("SELECT * FROM model_updates WHERE project_id=?", (pid,)).fetchone()
+        if not update or update["state"] != "pending" or update["changed"] > time.time() - 2:
+            return
+        if conn.execute("SELECT 1 FROM jobs WHERE project_id=? AND state IN ('queued','running')", (pid,)).fetchone():
+            return
+        positive = conn.execute("""SELECT count(*) FROM labels l JOIN images i ON i.id=l.image_id
+            WHERE i.project_id=? AND i.review_status='approved'""", (pid,)).fetchone()[0]
+        if not positive:
+            conn.execute("UPDATE model_updates SET state='waiting',message=? WHERE project_id=?",
+                         ("等待补充并保存缺陷标注，当前缺陷框为 0", pid))
+            return
+        revision = update["revision"]
+        station = conn.execute("SELECT station FROM projects WHERE id=?", (pid,)).fetchone()[0]
+        rows = [dict(row) for row in conn.execute("""SELECT i.id,i.board_serial,i.batch,
+            EXISTS(SELECT 1 FROM labels l WHERE l.image_id=i.id) AS positive
+            FROM images i WHERE i.project_id=? AND i.review_status='approved'""", (pid,))]
+        conn.execute("UPDATE model_updates SET state='preparing',target_revision=?,message='' WHERE project_id=?", (revision, pid))
+    try:
+        seed = 20261110
+        for candidate in range(seed, seed + 64):
+            assigned, _ = split_groups(rows, "board", candidate, .2, .2)
+            if any(row["positive"] and assigned[row["id"]] == "train" for row in rows):
+                seed = candidate
+                break
+        with app.test_request_context(json=dict(template="det", split_policy="board", val_ratio=.2,
+                                               test_ratio=.2, seed=seed, created_by="自动更新")):
+            dataset = create_dataset(pid).get_json()
+        counts = dataset.get("counts", {}).get("splits", {})
+        if not counts.get("train", {}).get("boxes") or not counts.get("val", {}).get("images"):
+            with db() as conn:
+                conn.execute("UPDATE model_updates SET state=CASE WHEN revision>? THEN 'pending' ELSE 'waiting' END,message=? WHERE project_id=?",
+                             (revision, "请补充独立图片和缺陷标注，训练集需要缺陷框和验证图片", pid))
+            return
+        with app.test_request_context(json=dict(epochs=20, imgsz=640, batch=8, device="cpu",
+                                               auto_publish=True, station=station,
+                                               model_update_revision=revision)):
+            start_training(dataset["id"])
+    except Exception as exc:
+        message = getattr(exc, "description", str(exc))
+        with db() as conn:
+            conn.execute("UPDATE model_updates SET state=CASE WHEN revision>? THEN 'pending' ELSE 'failed' END,message=? WHERE project_id=?",
+                         (revision, str(message)[:500], pid))
+
+
+def finish_model_update(jid):
+    with db() as conn:
+        row = conn.execute("SELECT * FROM jobs WHERE id=?", (jid,)).fetchone()
+        if not row:
+            return
+        revision = json_value(row["config"], {}).get("model_update_revision")
+        if not revision:
+            return
+        successful = row["state"] == "done"
+        conn.execute("""UPDATE model_updates SET
+            trained_revision=CASE WHEN ? THEN max(trained_revision,?) ELSE trained_revision END,
+            state=CASE WHEN revision>? THEN 'pending' WHEN ? THEN 'ready' ELSE 'failed' END,
+            message=? WHERE project_id=? AND job_id=?""",
+                     (successful, revision, revision, successful,
+                      "" if successful else (row["error"] or "模型更新中断，请重试"), row["project_id"], jid))
+
+
+def process_model_updates():
+    if not AUTO_TRAIN:
+        return
+    with db() as conn:
+        pending = conn.execute("SELECT project_id FROM model_updates WHERE state='pending' AND changed<=?", (time.time()-2,)).fetchall()
+    for row in pending:
+        prepare_model_update(row["project_id"])
 
 
 def freeze_dataset(conn, did, legacy=False):
@@ -453,6 +952,9 @@ def freeze_dataset(conn, did, legacy=False):
         hashes.setdefault(metadata["sha256"], set()).add(item["split"])
         labels = [dict(row) for row in conn.execute(
             "SELECT * FROM labels WHERE image_id=?", (item["id"],))]
+        if item["alignment"] and labels:
+            from pcb_alignment import project_labels
+            labels = project_labels(labels, json.loads(item["alignment"])["matrix"])
         conn.execute("INSERT INTO dataset_snapshots VALUES(?,?,?,?,?)",
                      (did, item["id"], item["split"], json.dumps(metadata), json.dumps(labels)))
         split = item["split"]
@@ -628,8 +1130,15 @@ def start_training(did):
                       device=str(payload.get("device", "cpu")),
                       model=str(payload.get("model") or TEMPLATES[template]["model"]),
                       classes=json_value(dataset["counts"], {}).get("class_order") or classes_for(template),
-                      auto_publish=bool(payload.get("auto_publish", False)),
+                      auto_publish=bool(payload.get("auto_publish", template == "det")),
                       station=str(payload.get("station", ""))[:80])
+        if payload.get("model_update_revision"):
+            try:
+                config["model_update_revision"] = int(payload["model_update_revision"])
+            except (TypeError, ValueError):
+                abort(400, "模型更新版本无效")
+            if config["model_update_revision"] < 1:
+                abort(400, "模型更新版本无效")
         local_model = ROOT / "training" / Path(config["model"]).name
         if not Path(config["model"]).is_file() and local_model.is_file():
             config["model"] = str(local_model)
@@ -637,6 +1146,12 @@ def start_training(did):
         conn.execute("""INSERT INTO jobs(id,dataset_id,project_id,template,config,state,created)
             VALUES(?,?,?,?,?,'queued',?)""",
                      (jid, did, project_id, template, json.dumps(config), now()))
+        if config.get("model_update_revision"):
+            claimed = conn.execute("""UPDATE model_updates SET job_id=?,state='queued'
+                WHERE project_id=? AND target_revision=? AND state='preparing'""",
+                                   (jid, project_id, config["model_update_revision"]))
+            if claimed.rowcount != 1:
+                abort(409, "该次模型更新已被处理，请刷新状态")
     QUEUE.put(jid)
     return jsonify(id=jid)
 
@@ -1054,7 +1569,8 @@ def run_job(jid: str) -> None:
             conn.execute("UPDATE jobs SET state='running',started=? WHERE id=?", (now(), jid))
         dataset_dir = (build_det_dataset if job["template"] == "det" else build_cls_dataset)(
             job["dataset_id"], job_dir)
-        config.update(dataset=str(dataset_dir), job_dir=str(job_dir), template=job["template"])
+        config.update(dataset=str(dataset_dir), job_dir=str(job_dir), template=job["template"],
+                      platform_database=str(DB), job_id=jid)
         if job["template"] == "det":
             with db() as conn:
                 baseline = conn.execute("""SELECT m.* FROM deployments d
@@ -1089,6 +1605,9 @@ def run_job(jid: str) -> None:
             return
         metadata = json.loads(metrics_path.read_text(encoding="utf-8"))
         with db() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if conn.execute("SELECT state FROM jobs WHERE id=?", (jid,)).fetchone()[0] != "running":
+                return
             count = conn.execute("SELECT count(*) FROM models WHERE project_id=?", (job["project_id"],)).fetchone()[0]
             version = f"v{count+1}"
             mid = uuid.uuid4().hex
@@ -1109,15 +1628,10 @@ def run_job(jid: str) -> None:
                           json.dumps(metadata.get("metrics"), ensure_ascii=False),
                           float(metadata.get("threshold", 0.5)), str(target),
                           json.dumps(card, ensure_ascii=False), now()))
-            if (config.get("auto_publish") and config.get("classes") == classes_for("det")
-                    and float((metadata.get("metrics") or {}).get("map50") or 0) > 0
-                    and (metadata.get("metrics") or {}).get("test", {}).get("evaluation_status") in ("valid", "partial")):
+            if config.get("auto_publish") and job["template"] == "det":
                 station = config.get("station") or conn.execute(
-                    "SELECT station FROM projects WHERE id=?", (job["project_id"],)).fetchone()[0] or ""
-                conn.execute("UPDATE deployments SET active=0 WHERE project_id=? AND station=?", (job["project_id"], station))
-                conn.execute("INSERT INTO deployments(project_id,station,model_id,active,created) VALUES(?,?,?,1,?)",
-                             (job["project_id"], station, mid, now()))
-                conn.execute("UPDATE models SET published=1 WHERE id=?", (mid,))
+                    "SELECT station FROM projects WHERE id=?", (job["project_id"],)).fetchone()[0]
+                deploy_updated_detector(conn, job["project_id"], mid, station)
             conn.execute("""UPDATE jobs SET state='done',metrics=?,weights=?,model_id=?,
                 finished=? WHERE id=?""",
                          (json.dumps(metadata.get("metrics"), ensure_ascii=False), str(target),
@@ -1132,11 +1646,28 @@ def run_job(jid: str) -> None:
 
 def worker():
     while True:
-        jid = QUEUE.get()
+        try:
+            jid = QUEUE.get(timeout=2)
+        except queue.Empty:
+            try:
+                process_model_updates()
+            except Exception:
+                app.logger.exception("自动更新模型失败")
+            continue
         try:
             run_job(jid)
         except Exception:  # noqa: BLE001
             time.sleep(1)
+        finally:
+            try:
+                finish_model_update(jid)
+            except Exception:
+                app.logger.exception("更新训练状态失败")
+            QUEUE.task_done()
+        try:
+            process_model_updates()
+        except Exception:
+            app.logger.exception("准备下一次模型更新失败")
 
 
 def start_worker():

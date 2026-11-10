@@ -14,7 +14,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from flask import Flask, abort, jsonify, request, send_file
+from flask import Flask, abort, jsonify, request, send_file, redirect
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 ROOT = Path(__file__).resolve().parent
@@ -120,7 +120,7 @@ def next_rev(db):
 
 @app.get("/")
 def home():
-    return app.send_static_file("learning.html")
+    return redirect("/platform/#label")
 
 
 @app.get("/api/state")

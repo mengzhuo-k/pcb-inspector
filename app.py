@@ -1,3 +1,4 @@
+import base64
 import io
 import json
 import math
@@ -12,7 +13,7 @@ from datetime import datetime
 from contextlib import contextmanager
 from pathlib import Path
 
-from flask import Flask, abort, jsonify, request, send_file
+from flask import Flask, abort, jsonify, request, send_file, redirect
 from PIL import Image, ImageOps, UnidentifiedImageError
 from werkzeug.exceptions import HTTPException
 os.environ.setdefault("NO_ALBUMENTATIONS_UPDATE", "1")
@@ -85,6 +86,7 @@ with db() as conn:
     columns = {row["name"] for row in conn.execute("PRAGMA table_info(records)")}
     for name, kind in [("batch_id", "TEXT"), ("filename", "TEXT"), ("auto_decision", "TEXT"),
                        ("revision", "INTEGER DEFAULT 0"), ("model_version", "TEXT"), ("model_sha256", "TEXT"),
+                       ("alignment", "TEXT"), ("original_image", "BLOB"), ("process_parameters", "TEXT"),
                        ("classification", "TEXT"), ("issues", "TEXT DEFAULT '[]'"), ("corrections", "TEXT")]:
         if name not in columns:
             conn.execute(f"ALTER TABLE records ADD COLUMN {name} {kind}")
@@ -92,6 +94,8 @@ with db() as conn:
         id TEXT PRIMARY KEY, created TEXT, station TEXT, name TEXT, state TEXT)""")
     if "completed_at" not in {row["name"] for row in conn.execute("PRAGMA table_info(batches)")}:
         conn.execute("ALTER TABLE batches ADD COLUMN completed_at TEXT")
+    if "process_parameters" not in {row["name"] for row in conn.execute("PRAGMA table_info(batches)")}:
+        conn.execute("ALTER TABLE batches ADD COLUMN process_parameters TEXT")
     conn.execute("""CREATE TABLE IF NOT EXISTS batch_items (
         batch_id TEXT, ordinal INTEGER, filename TEXT, state TEXT, error TEXT,
         image BLOB, record_id TEXT, sampled INTEGER DEFAULT 0, sample_revision INTEGER DEFAULT 0,
@@ -102,6 +106,35 @@ with db() as conn:
     conn.execute("""CREATE TABLE IF NOT EXISTS reports (
         id TEXT PRIMARY KEY,batch_id TEXT,created TEXT,fingerprint TEXT,filename TEXT,
         document BLOB,completed_at TEXT,UNIQUE(batch_id,fingerprint))""")
+
+with db() as conn:
+    conn.execute("""CREATE TABLE IF NOT EXISTS exception_cases(
+        record_id TEXT PRIMARY KEY,batch_id TEXT NOT NULL,snapshot TEXT NOT NULL,
+        review_data TEXT DEFAULT '{}',revision INTEGER DEFAULT 0)""")
+
+
+def require_open_batch(conn, bid):
+    if not bid:
+        return
+    row = conn.execute("SELECT state FROM batches WHERE id=?", (bid,)).fetchone()
+    if not row:
+        abort(404, "批量任务不存在")
+    if row["state"] == "completed":
+        abort(409, "批次已完成归档，仅供查看")
+
+
+def capture_exceptions(conn, bid):
+    rows = conn.execute("""SELECT r.*,i.ordinal FROM records r
+        JOIN batch_items i ON i.record_id=r.id WHERE r.batch_id=? AND i.state='done'
+        AND (r.decision='不合格' OR r.auto_decision='不合格')""", (bid,)).fetchall()
+    for row in rows:
+        snapshot = document({key:row[key] for key in COLS.split(",")})
+        snapshot["ordinal"] = row["ordinal"]
+        snapshot["reviews"] = [dict(item) for item in conn.execute(
+            "SELECT * FROM reviews WHERE record_id=? ORDER BY revision", (row["id"],))]
+        conn.execute("INSERT OR IGNORE INTO exception_cases(record_id,batch_id,snapshot) VALUES(?,?,?)",
+                     (row["id"], bid, json.dumps(snapshot, ensure_ascii=False)))
+
 
 with db() as conn:
     for row in conn.execute("SELECT id,boxes,classification,decision,auto_decision FROM records WHERE decision='待复核' OR auto_decision='待复核'").fetchall():
@@ -130,6 +163,18 @@ def snapshot():
 
 
 def detect(img, station=""):
+    original = img
+    alignment = None
+    try:
+        reference = platform_runtime.alignment_reference(station)
+        if reference:
+            from pcb_alignment import align
+            result = align(img, reference["path"])
+            with Image.open(io.BytesIO(base64.b64decode(result["preview"].split(",", 1)[1]))) as corrected:
+                img = corrected.convert("RGB")
+            alignment = dict(reference_id=reference["id"], matrix=result["matrix"], method=result["method"])
+    except (ValueError, OSError, sqlite3.Error) as exc:
+        abort(400, "板面对齐失败，请使用清晰完整的板面图片：" + str(exc))
     issues = []
     policy = platform_runtime.policy(station)
     classification = None
@@ -154,7 +199,11 @@ def detect(img, station=""):
             rule = RULES.get(key, (key, .25, "模型检出焊接缺陷", "对照正常样板复查"))
             boxes.append(dict(key=key, label=rule[0], score=round(score, 4), model=version,
                               rect=[x1/img.width, y1/img.height, x2/img.width, y2/img.height]))
-        return Detection(boxes, version, sha256, classification=classification, issues=issues)
+        detection = Detection(boxes, version, sha256, classification=classification, issues=issues)
+        detection.image = img
+        detection.original_image = original
+        detection.alignment = alignment
+        return detection
     except LookupError as exc:
         issues.append(str(exc))
     except Exception:
@@ -174,7 +223,11 @@ def detect(img, station=""):
         if key == "missing_connection":
             boxes.append(dict(key=key, label=RULES[key][0], score=round(score, 4), model=version,
                               rect=[x1/img.width, y1/img.height, x2/img.width, y2/img.height]))
-    return Detection(boxes, version, sha256, classification=classification, issues=issues)
+    detection = Detection(boxes, version, sha256, classification=classification, issues=issues)
+    detection.image = img
+    detection.original_image = original
+    detection.alignment = alignment
+    return detection
 
 
 def field(name, limit, required=False):
@@ -186,14 +239,20 @@ def field(name, limit, required=False):
 
 @app.get("/")
 def index():
-    return app.send_static_file("index.html")
+    return redirect("/platform/")
 
 
 @app.post("/api/preview")
 def preview():
     boxes = detect(snapshot(), request.form.get("station", ""))
+    preview = None
+    if boxes.alignment:
+        buffer = io.BytesIO()
+        boxes.image.save(buffer, "JPEG", quality=94)
+        preview = "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
     return jsonify(boxes=boxes, model_version=boxes.model_version,
-                   classification=boxes.classification, issues=boxes.issues)
+                   classification=boxes.classification, issues=boxes.issues,
+                   image=preview, alignment=boxes.alignment)
 
 
 @app.get("/api/model/status")
@@ -208,41 +267,67 @@ def model_info():
     return info
 
 
+def process_parameters(payload):
+    result = {}
+    for key, label, maximum in (("temp", "回流峰值温度", 500), ("reflow_seconds", "回流时间", 3600)):
+        raw = payload.get(key)
+        if raw not in (None, ""):
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                abort(400, label + "须为数字")
+            if not math.isfinite(value) or not 0 <= value <= maximum:
+                abort(400, label + "超出有效范围")
+            result[key] = value
+    paste = str(payload.get("solder_batch", "")).strip()
+    if len(paste) > 80:
+        abort(400, "焊膏批号最多 80 字")
+    if paste:
+        result["solder_batch"] = paste
+    return result
+
+
 @app.post("/api/records")
 def create():
     station = field("station", 80, True)
-    batch = field("batch", 80, True)
+    batch = field("batch", 80) or "巡检-" + datetime.now().strftime("%Y%m%d-%H%M%S")
     note = field("note", 2000)
-    try:
-        temp = float(field("temp", 16)) if request.form.get("temp") else None
-        if temp is not None and (not math.isfinite(temp) or not 0 <= temp <= 500):
-            raise ValueError
-    except ValueError:
-        abort(400, "峰值温度须在 0 至 500 °C 之间")
+    parameters = process_parameters(request.form)
+    temp = parameters.get("temp")
     img = snapshot()
     boxes = detect(img, station)
     with db() as conn:
-        rid = save_record(conn, img, boxes, station, batch, temp, note)
+        rid = save_record(conn, img, boxes, station, batch, temp, note,
+                          filename=request.files["image"].filename, process=parameters)
     return detail(rid)
 
 
-def save_record(conn, img, boxes, station, batch, temp=None, note="", batch_id=None, filename=None):
+def save_record(conn, img, boxes, station, batch, temp=None, note="", batch_id=None, filename=None, process=None):
     buffer = io.BytesIO()
-    img.save(buffer, "JPEG", quality=94)
+    getattr(boxes, "image", img).save(buffer, "JPEG", quality=94)
     rid = uuid.uuid4().hex
-    history = conn.execute("""SELECT boxes,temp FROM records WHERE station=?
-            AND decision='不合格' ORDER BY created DESC LIMIT 50""", (station,)).fetchall()
+    process = process or {}
+    history = conn.execute("""SELECT boxes,temp,decision FROM records WHERE station=?
+        ORDER BY created DESC LIMIT 100""", (station,)).fetchall()
     analysis = []
     for key in dict.fromkeys(b["key"] for b in boxes):
         similar = [r for r in history if any(b["key"] == key for b in json.loads(r["boxes"]))]
-        evidence = f"同工位最近 {len(history)} 条不合格记录中，{len(similar)} 条含此候选。"
+        evidence = f"同工位最近 {len(history)} 份记录中，{len(similar)} 份检出同类缺陷。"
         temps = [r["temp"] for r in similar if r["temp"] is not None]
-        if temp is not None and temps:
-            evidence += f"本次峰值 {temp:g} °C，历史同类均值 {sum(temps)/len(temps):.1f} °C（{len(temps)} 条）。"
+        if temp is not None:
+            evidence += f"本次回流峰值 {temp:g} °C。"
+            if temps:
+                evidence += f"历史同类 {len(temps)} 份有温度记录，均值 {sum(temps)/len(temps):.1f} °C。"
+        if process.get("reflow_seconds") is not None:
+            evidence += f"本次回流时间 {process['reflow_seconds']:g} 秒。"
+        if process.get("solder_batch"):
+            evidence += f"焊膏批号 {process['solder_batch']}。"
+        if not history:
+            evidence += "当前工位尚无历史记录可对照。"
         rule = RULES.get(key, (key, .25, "模型检出缺陷", "请对照原图复查"))
         analysis.append(dict(label=rule[0], cause=rule[2], action=rule[3], evidence=evidence))
     classification = getattr(boxes, "classification", None)
-    if classification:
+    if classification and classification.get("is_defect"):
         key = classification["key"]
         rule = RULES.get(key)
         label = classification["label"]
@@ -254,6 +339,9 @@ def save_record(conn, img, boxes, station, batch, temp=None, note="", batch_id=N
                     + (f" 次选：{alternatives}。" if alternatives else "")
                     + " 整板分类仅给出类型，不定位具体元件。")
         analysis.append(dict(label=label, cause=cause, action=action, evidence=evidence))
+    for finding in analysis:
+        finding["basis"] = "模型检出与工艺规则"
+        finding["history_samples"] = len(history)
     defective = bool(boxes) or bool(classification and classification["is_defect"])
     issues = getattr(boxes, "issues", [])
     decision = "不合格" if defective else "合格"
@@ -266,10 +354,15 @@ def save_record(conn, img, boxes, station, batch, temp=None, note="", batch_id=N
          getattr(boxes, "model_version", None), getattr(boxes, "model_sha256", None),
          json.dumps(classification) if classification else None))
     conn.execute("UPDATE records SET issues=? WHERE id=?", (json.dumps(issues, ensure_ascii=False), rid))
+    original = io.BytesIO()
+    getattr(boxes, "original_image", img).save(original, "JPEG", quality=94)
+    conn.execute("UPDATE records SET alignment=?,original_image=?,process_parameters=? WHERE id=?",
+                 (json.dumps(getattr(boxes, "alignment", None)), original.getvalue(),
+                  json.dumps(process, ensure_ascii=False), rid))
     return rid
 
 
-COLS = "id,created,station,batch,temp,note,boxes,analysis,decision,reviewer,signed,manual,comment,batch_id,filename,auto_decision,revision,model_version,model_sha256,classification,issues,corrections"
+COLS = "id,created,station,batch,temp,note,boxes,analysis,decision,reviewer,signed,manual,comment,batch_id,filename,auto_decision,revision,model_version,model_sha256,classification,issues,corrections,alignment,process_parameters"
 
 
 def document(row):
@@ -277,6 +370,8 @@ def document(row):
     for key in ["boxes", "analysis", "manual", "issues"]:
         obj[key] = json.loads(obj[key] or "[]")
     obj["classification"] = json.loads(obj["classification"]) if obj.get("classification") else None
+    obj["process_parameters"] = json.loads(obj.get("process_parameters") or "{}")
+    obj["alignment"] = json.loads(obj["alignment"]) if obj.get("alignment") else None
     obj["corrections"] = json.loads(obj["corrections"]) if obj.get("corrections") else None
     return obj
 
@@ -287,6 +382,7 @@ def records():
         rows = conn.execute("""SELECT id,created,station,batch,decision,signed,reviewer,
             batch_id,filename,auto_decision,revision,model_version,classification,
             json_array_length(boxes) AS count,
+            COALESCE((SELECT state='completed' FROM batches WHERE id=records.batch_id),0) AS readonly,
             COALESCE((SELECT sampled FROM batch_items WHERE record_id=records.id),0) AS sampled,
             COALESCE((SELECT sample_revision FROM batch_items WHERE record_id=records.id),0) AS sample_revision
             FROM records ORDER BY rowid DESC""").fetchall()
@@ -304,34 +400,40 @@ def detail(rid):
         row = conn.execute(f"SELECT {COLS} FROM records WHERE id=?", (rid,)).fetchone()
         history = conn.execute("SELECT * FROM reviews WHERE record_id=? ORDER BY revision DESC", (rid,)).fetchall()
         sample = conn.execute("SELECT sampled,sample_revision FROM batch_items WHERE record_id=?", (rid,)).fetchone()
+        batch = conn.execute("SELECT state FROM batches WHERE id=?", (row["batch_id"],)).fetchone() if row else None
     if not row:
         abort(404)
     result = document(row)
     result["reviews"] = [dict(item) for item in history]
     result["sampled"] = bool(sample and sample["sampled"])
     result["sample_revision"] = sample["sample_revision"] if sample else 0
-    result["review_required"] = result["sampled"] or row["decision"] == "不合格" or row["auto_decision"] == "不合格"
+    result["readonly"] = bool(batch and batch["state"] == "completed")
+    result["review_required"] = not result["readonly"] and (not row["batch_id"] or result["sampled"] or row["decision"] == "不合格" or row["auto_decision"] == "不合格")
     return jsonify(result)
 
 
 @app.get("/api/records/<rid>/image")
 def photo(rid):
     with db() as conn:
-        row = conn.execute("SELECT image FROM records WHERE id=?", (rid,)).fetchone()
+        column = "COALESCE(original_image,image)" if request.args.get("original") == "1" else "image"
+        row = conn.execute(f"SELECT {column} FROM records WHERE id=?", (rid,)).fetchone()
     return send_file(io.BytesIO(row[0]), mimetype="image/jpeg") if row else abort(404)
 
 
 @app.delete("/api/records/<rid>")
 def delete_record(rid):
     with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         record = conn.execute("SELECT batch_id FROM records WHERE id=?", (rid,)).fetchone()
+        if not record:
+            abort(404, "检验单已删除或不存在")
+        require_open_batch(conn, record["batch_id"])
         cursor = conn.execute("DELETE FROM records WHERE id=?", (rid,))
         if not cursor.rowcount:
             abort(404, "检验单已删除或不存在")
         conn.execute("DELETE FROM reviews WHERE record_id=?", (rid,))
         conn.execute("UPDATE batch_items SET state='deleted',record_id=NULL,sampled=0 WHERE record_id=?", (rid,))
-        if record["batch_id"]:
-            conn.execute("UPDATE batches SET state='reviewing',completed_at=NULL WHERE id=? AND state='completed'", (record["batch_id"],))
+
     return jsonify(deleted=rid)
 
 
@@ -344,12 +446,14 @@ def review(rid):
     if decision not in ["合格", "不合格"] or any(m not in MANUAL for m in manual) or (manual and decision == "合格"):
         abort(400, "请核对复查结论与补标项")
     with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         row = conn.execute("""SELECT revision,signed,batch_id,decision,auto_decision,
             COALESCE((SELECT sampled FROM batch_items WHERE record_id=records.id),0) AS sampled
             FROM records WHERE id=?""", (rid,)).fetchone()
         if not row:
             abort(404, "检验单已删除或不存在")
-        if not (row["sampled"] or row["decision"] == "不合格" or row["auto_decision"] == "不合格"):
+        require_open_batch(conn, row["batch_id"])
+        if not (not row["batch_id"] or row["sampled"] or row["decision"] == "不合格" or row["auto_decision"] == "不合格"):
             abort(400, "该图片未进入抽样清单或异常复查")
         try:
             revision = int(request.form.get("revision", 0))
@@ -364,8 +468,7 @@ def review(rid):
         if not cursor.rowcount:
             abort(409, "其他员工已修改此单，请重新打开后复查")
         conn.execute("INSERT INTO reviews VALUES (?,?,?,?,?,?)", (rid, revision+1, signed, reviewer, decision, comment))
-        if row["batch_id"]:
-            conn.execute("UPDATE batches SET state='reviewing',completed_at=NULL WHERE id=? AND state='completed'", (row["batch_id"],))
+
     return detail(rid)
 
 
@@ -401,6 +504,7 @@ def save_corrections(rid):
         row = conn.execute("SELECT * FROM records WHERE id=?", (rid,)).fetchone()
         if not row:
             abort(404, "检验单不存在")
+        require_open_batch(conn, row["batch_id"])
         if payload.get("revision") != row["revision"]:
             abort(409, "检验单已更新，请重新打开后纠错")
         correction = dict(boxes=cleaned, reviewer=reviewer, project_id=pid)
@@ -454,9 +558,11 @@ def new_batch():
         abort(400, "每批请选择 1 至 200 张图片")
     if any(not isinstance(n, str) or not n or len(n) > 300 for n in filenames):
         abort(400, "文件名无效或过长")
+    parameters = process_parameters(payload)
     bid = uuid.uuid4().hex
     with db() as conn:
         conn.execute("INSERT INTO batches(id,created,station,name,state) VALUES (?,?,?,?, 'importing')", (bid, now(), station, name))
+        conn.execute("UPDATE batches SET process_parameters=? WHERE id=?", (json.dumps(parameters), bid))
         conn.executemany("""INSERT INTO batch_items
             (batch_id,ordinal,filename,state) VALUES (?,?,?,'awaiting_upload')""",
             [(bid, i, n) for i, n in enumerate(filenames)])
@@ -489,19 +595,55 @@ def batch_list():
 @app.get("/api/batches/rejections")
 def rejected_items():
     with db() as conn:
-        rows = conn.execute("""SELECT r.id AS record_id,r.batch_id,r.filename,r.signed,
-            r.reviewer,r.decision,r.auto_decision,i.ordinal,b.name AS batch_name,b.station,
-            r.classification,json_array_length(r.boxes) AS count
-            FROM records r JOIN batches b ON b.id=r.batch_id
-            JOIN batch_items i ON i.record_id=r.id
-            WHERE b.state IN ('ready','reviewing','completed') AND i.state='done' AND r.decision='不合格'
-            ORDER BY b.created DESC,b.rowid DESC,i.ordinal""").fetchall()
+        rows = conn.execute("""SELECT e.*,b.name,b.station,b.state FROM exception_cases e
+            JOIN batches b ON b.id=e.batch_id WHERE b.state='completed'
+            ORDER BY b.created DESC,b.rowid DESC,e.rowid""").fetchall()
     result = []
     for row in rows:
-        item = dict(row)
-        item["classification"] = json.loads(item["classification"]) if item["classification"] else None
-        result.append(item)
+        snapshot = json.loads(row["snapshot"])
+        review = json.loads(row["review_data"])
+        result.append(dict(record_id=row["record_id"],exception_id=row["record_id"],
+            batch_id=row["batch_id"],batch_name=row["name"],station=row["station"],
+            filename=snapshot["filename"],ordinal=snapshot["ordinal"],
+            signed=review.get("signed"),reviewer=review.get("reviewer",""),
+            decision=review.get("decision",snapshot["decision"]),auto_decision=snapshot["auto_decision"],
+            classification=snapshot["classification"],count=len(snapshot["boxes"])))
     return jsonify(result)
+
+
+@app.route("/api/exceptions/<rid>", methods=["GET", "POST"])
+def exception_case(rid):
+    with db() as conn:
+        if request.method == "POST":
+            conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT * FROM exception_cases WHERE record_id=?", (rid,)).fetchone()
+        if not row:
+            abort(404, "异常复核记录不存在")
+        snapshot = json.loads(row["snapshot"])
+        data = json.loads(row["review_data"])
+        revision = row["revision"]
+        if request.method == "POST":
+            reviewer = field("reviewer", 80, True)
+            decision = field("decision", 10, True)
+            manual = request.form.getlist("manual")
+            if decision not in ("合格","不合格") or any(item not in MANUAL for item in manual) or (manual and decision=="合格"):
+                abort(400, "请核对复核结论与补标项")
+            if str(revision) != request.form.get("revision"):
+                abort(409, "异常复核记录已更新，请重新打开")
+            signed = now()
+            history = data.get("reviews", [])
+            history.append(dict(revision=revision+1,reviewer=reviewer,decision=decision,
+                                created=signed,comment=field("comment", 2000)))
+            data = dict(reviewer=reviewer,decision=decision,manual=manual,signed=signed,
+                        comment=field("comment",2000),reviews=history)
+            conn.execute("UPDATE exception_cases SET review_data=?,revision=revision+1 WHERE record_id=?",
+                         (json.dumps(data,ensure_ascii=False),rid))
+            revision += 1
+    snapshot.update(data)
+    snapshot.update(id=rid,exception_mode=True,readonly=False,review_required=True,revision=revision,
+                    signed=data.get("signed"),reviewer=data.get("reviewer",""),
+                    reviews=data.get("reviews",[]))
+    return jsonify(snapshot)
 
 
 @app.get("/api/batches/<bid>")
@@ -552,6 +694,8 @@ def batch_detail(bid):
 @app.post("/api/batches/<bid>/items/<int:ordinal>")
 def upload_item(bid, ordinal):
     with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        require_open_batch(conn, bid)
         item = conn.execute("SELECT state FROM batch_items WHERE batch_id=? AND ordinal=?", (bid, ordinal)).fetchone()
     if not item:
         abort(404, "图片条目不存在")
@@ -563,15 +707,19 @@ def upload_item(bid, ordinal):
         img.save(buffer, "JPEG", quality=94)
     except HTTPException as exc:
         with db() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            require_open_batch(conn, bid)
             conn.execute("""UPDATE batch_items SET state='failed',error=?
                 WHERE batch_id=? AND ordinal=? AND state IN ('awaiting_upload','failed')""",
                 (exc.description, bid, ordinal))
         raise
     with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        require_open_batch(conn, bid)
         conn.execute("""UPDATE batch_items SET state='queued',image=?,error=NULL
             WHERE batch_id=? AND ordinal=? AND state IN ('awaiting_upload','failed')""",
             (buffer.getvalue(), bid, ordinal))
-        conn.execute("UPDATE batches SET state='importing',completed_at=NULL WHERE id=? AND state IN ('ready','reviewing','completed')", (bid,))
+        conn.execute("UPDATE batches SET state='importing',completed_at=NULL WHERE id=? AND state IN ('ready','reviewing')", (bid,))
     work_ready.set()
     return jsonify(state="queued")
 
@@ -580,6 +728,7 @@ def upload_item(bid, ordinal):
 def start_batch(bid):
     with db() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        require_open_batch(conn, bid)
         batch = conn.execute("SELECT state FROM batches WHERE id=?", (bid,)).fetchone()
         if not batch:
             abort(404, "批量任务不存在")
@@ -596,6 +745,7 @@ def start_batch(bid):
 def retry_batch(bid):
     with db() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        require_open_batch(conn, bid)
         if not conn.execute("SELECT 1 FROM batches WHERE id=?", (bid,)).fetchone():
             abort(404, "批量任务不存在")
         retried = conn.execute("""UPDATE batch_items SET state='queued',error=NULL
@@ -613,12 +763,14 @@ def finish_batch(bid):
         batch = conn.execute("SELECT state FROM batches WHERE id=?", (bid,)).fetchone()
         if not batch:
             abort(404, "批量任务不存在")
+        if batch["state"] == "completed":
+            return batch_detail(bid)
         pending = conn.execute("""SELECT 1 FROM batch_items WHERE batch_id=?
             AND state IN ('awaiting_upload','queued','processing')""", (bid,)).fetchone()
         if pending:
             abort(409, "图片尚未全部上传或检测完成，请等待处理结束")
-        if batch["state"] not in ("reviewing","completed"):
-            conn.execute("UPDATE batches SET state='reviewing',completed_at=NULL WHERE id=?", (bid,))
+        capture_exceptions(conn, bid)
+        conn.execute("UPDATE batches SET state='completed',completed_at=? WHERE id=?", (now(), bid))
     return batch_detail(bid)
 
 
@@ -630,7 +782,7 @@ def report_snapshot(conn, bid):
         abort(409, "请先提交批次到异常复查，再手动导出报告")
     rows = conn.execute("""SELECT i.ordinal,i.filename,i.state,i.error,i.record_id,i.sampled,i.sample_revision,
         r.decision,r.auto_decision,r.signed,r.reviewer,r.revision,r.comment,r.model_version,
-        r.model_sha256,r.classification,json_array_length(r.boxes) AS count
+        r.model_sha256,r.classification,r.temp,r.process_parameters,r.analysis,json_array_length(r.boxes) AS count
         FROM batch_items i LEFT JOIN records r ON r.id=i.record_id
         WHERE i.batch_id=? ORDER BY i.ordinal""", (bid,)).fetchall()
     if any(r["state"] in ("awaiting_upload", "queued", "processing") for r in rows):
@@ -693,6 +845,7 @@ def complete_export(bid, report_id):
         _, fingerprint = report_snapshot(conn, bid)
         if fingerprint != report["fingerprint"]:
             abort(409, "检验结果已变化，请重新导出最新报告完成批次")
+        capture_exceptions(conn, bid)
         completed_at = now()
         conn.execute("UPDATE batches SET state='completed',completed_at=? WHERE id=? AND state!='completed'", (completed_at,bid))
         conn.execute("UPDATE reports SET completed_at=COALESCE(completed_at,?) WHERE id=?", (completed_at,report_id))
@@ -715,6 +868,7 @@ def sample_batch(bid):
         abort(400, "抽样比例须为 1 至 100，张数须为正整数")
     with db() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        require_open_batch(conn, bid)
         batch = conn.execute("SELECT state FROM batches WHERE id=?", (bid,)).fetchone()
         if not batch:
             abort(404, "批量任务不存在")
@@ -742,7 +896,7 @@ def batch_worker():
         while True:
             with db() as conn:
                 conn.execute("BEGIN IMMEDIATE")
-                item = conn.execute("""SELECT i.*,b.station,b.name FROM batch_items i
+                item = conn.execute("""SELECT i.*,b.station,b.name,b.process_parameters FROM batch_items i
                     JOIN batches b ON i.batch_id=b.id
                     WHERE i.state='queued' AND b.state='running'
                     ORDER BY b.created,i.ordinal LIMIT 1""").fetchone()
@@ -759,7 +913,9 @@ def batch_worker():
                 boxes = detect(img, item["station"])
                 with db() as conn:
                     rid = save_record(conn, img, boxes, item["station"], item["name"],
-                                      batch_id=item["batch_id"], filename=item["filename"])
+                                      batch_id=item["batch_id"], filename=item["filename"],
+                                      temp=json.loads(item["process_parameters"] or "{}").get("temp"),
+                                      process=json.loads(item["process_parameters"] or "{}"))
                     conn.execute("""UPDATE batch_items SET state='done',record_id=?,image=NULL,error=NULL
                         WHERE batch_id=? AND ordinal=?""", (rid, item["batch_id"], item["ordinal"]))
             except Exception:
@@ -771,6 +927,8 @@ def batch_worker():
 
 def start_worker():
     with db() as conn:
+        for batch in conn.execute("SELECT id FROM batches WHERE state='completed'").fetchall():
+            capture_exceptions(conn, batch["id"])
         conn.execute("UPDATE batch_items SET state='queued' WHERE state='processing'")
     threading.Thread(target=batch_worker, daemon=True, name="pcb-batch-worker").start()
     work_ready.set()

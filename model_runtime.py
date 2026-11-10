@@ -156,6 +156,8 @@ class PlatformRuntime:
                 query += " AND d.project_id=?"
                 params.append(project_id)
             rows = conn.execute(query + " ORDER BY d.id DESC", params).fetchall()
+            if not rows and station:
+                rows = conn.execute(query + " ORDER BY d.id DESC", ["", *params[1:]]).fetchall()
             rows = [row for row in rows if json_loads(row["card"]).get("template", "det") == "det"]
             if len({row["project_id"] for row in rows}) > 1:
                 raise ValueError("该工位绑定了多个项目，请为工位指定唯一项目")
@@ -208,6 +210,20 @@ class PlatformRuntime:
                     except sqlite3.Error:
                         pass
 
+    def alignment_reference(self, station):
+        row = self._published(station)
+        if row is None:
+            return None
+        with closing(sqlite3.connect(self.database, timeout=5)) as conn:
+            conn.row_factory = sqlite3.Row
+            reference = conn.execute("""SELECT s.image_id AS id,s.path FROM alignment_sources s
+                JOIN alignment_references r ON r.project_id=s.project_id AND r.image_id=s.image_id
+                WHERE s.project_id=?""", (row["project_id"],)).fetchone()
+            if reference is None:
+                reference = conn.execute("""SELECT i.id,i.path FROM images i JOIN alignment_references r
+                    ON r.image_id=i.id WHERE r.project_id=?""", (row["project_id"],)).fetchone()
+            return dict(reference) if reference else None
+
     def policy(self, station):
         default = dict(required_classes=["missing_connection", "poor_solder_virtual",
             "poor_solder_cold", "solder_bridge", "pad_damage", "component_shift",
@@ -246,6 +262,10 @@ class PlatformRuntime:
                 missing = [name for name in policy["required_classes"]
                            if not per_class.get(name, {}).get("support")]
                 result.pcb_issues = ["必检类别缺少验证样本：" + "、".join(missing)] if missing else []
+            test_status = metrics.get("test", {}).get("evaluation_status")
+            if metrics.get("evaluation_status") and (metrics["evaluation_status"] == "unavailable"
+                    or test_status not in ("valid", "partial") or not metrics.get("map50")):
+                result.pcb_issues.append("新模型缺少有效的检测验证或独立测试结果，请人工复核")
             return result, active["version"], active["sha256"]
 
     def status(self, station="", project_id=None):

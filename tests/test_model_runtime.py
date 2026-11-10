@@ -117,6 +117,10 @@ class PlatformRuntimeTests(unittest.TestCase):
             with self.assertRaises(LookupError):
                 runtime.predict("image",station="missing")
             with closing(sqlite3.connect(database)) as conn, conn:
+                conn.execute("INSERT INTO deployments VALUES(3,'project','','A',1)")
+            self.assertEqual(runtime.predict("image",station="SMT-01")[0].marker,"A")
+            self.assertEqual(runtime.predict("image",station="B")[0].marker,"B")
+            with closing(sqlite3.connect(database)) as conn, conn:
                 conn.execute("UPDATE models SET id='bad',sha256='bad' WHERE id='B'")
                 conn.execute("UPDATE deployments SET model_id='bad' WHERE station='B'")
             with self.assertRaises(LookupError):

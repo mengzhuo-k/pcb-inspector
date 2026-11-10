@@ -1,12 +1,16 @@
 const base = location.pathname.startsWith('/platform') ? '/platform' : ''
 const $ = id => document.getElementById(id)
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
-const date = value => value ? new Date(value).toLocaleString('zh-CN', {hour12:false}) : '—'
 const COLORS = ['#38bdf8','#f59e0b','#a78bfa','#f87171','#4ade80','#22d3ee','#fb7185','#facc15']
 const state = {
-  meta:null, projects:[], project:null, images:[], image:null, boxes:[], selected:-1,
-  datasets:[], models:[], jobs:[], filter:'all', job:null, timer:null, review:null, img:null,
+  meta:null, project:null, images:[], image:null, boxes:[], selected:-1,
+  filter:'all', img:null, modelLoading:false, cameraStream:null,
   hoverBox:-1,
+  viewport:{x:0,y:0,w:1,h:1}, reference:null, alignment:null, overview:null,
+  annotationDirty:false, imageRequest:0, alignmentRequest:0,
+  siteTemplate:null,siteDirty:false,editingSites:false,selectedSite:null,
+  selectedSites:[],
+  sitePopup:null,
 }
 
 function toast(text, error=false){
@@ -30,265 +34,59 @@ async function api(path, body, method){
 const labelOf = key => (state.meta?.classes || []).find(item => item.key === key)?.label || key
 const colorOf = key => COLORS[Math.max(0, (state.meta?.det_classes || []).findIndex(item => item.key === key)) % COLORS.length]
 
-function fillSelect(select, items, {empty='', value='key', label='label'} = {}){
-  if (!select) return
-  const previous = select.value
-  select.replaceChildren()
-  if (empty !== null) select.append(new Option(empty, ''))
-  for (const item of items) select.append(new Option(item[label], item[value]))
-  if (previous && [...select.options].some(option => option.value === previous)) select.value = previous
+async function refreshWorkspace(){
+  await loadProject()
+  await loadLabelImages()
+  await loadModelUpdate()
 }
-
-function switchView(view){
-  if (['review','datasets','train'].includes(view)){
-    view = 'home'
-    if (location.hash !== '#home') history.replaceState(null, '', '#home')
-  }
-  document.querySelectorAll('.view').forEach(node => node.hidden = node.id !== 'view-' + view)
-  document.querySelectorAll('#tabs button').forEach(button => button.classList.toggle('active', button.dataset.view === view))
-  const hints = {
-    home: '<b>先选右上角的产品/工位</b>，再按 2 步走：拍照/上传 → 框缺陷。框完保存即入库。',
-    capture: '<b>第 1 步</b>：整块板放进画面拍清楚；同一批货填同一个批次。',
-    label: '<b>第 2 步</b>：先在左上角选缺陷类型，再拖动鼠标圈出缺陷；画错了右键取消。',
-    accuracy: '<b>每个缺陷的判断准确率</b>：数字低的类型可结合抽样结果检查。',
-    datasets: '<b>训练数据</b>：把“检查通过”的图片做成训练数据，按板/批次分训练和测试。',
-    train: '<b>训练模型</b>：选择训练数据，设置轮数后开始；页面会实时显示进度。',
-    models: '<b>模型版本</b>：查看训练结果，发布后工位就会使用新模型。',
-    accuracy: '<b>每个缺陷的判断准确率</b>：数字低的类型可结合抽样结果检查。',
-    monitor: '<b>使用情况</b>：查看当前工位用的模型和现场反馈。',
-    projects: '<b>先建产品/工位</b>：一个产品对应一个板型和工位。',
-  }
-  const banner = $('stepBanner')
-  if (hints[view]){
-    banner.innerHTML = hints[view]
-    banner.hidden = false
-  } else {
-    banner.hidden = true
-    banner.innerHTML = ''
-  }
-  refreshView(view)
-}
-
-function currentView(){
-  return (location.hash || '#home').slice(1)
-}
-
-function needProject(){
-  if (state.project) return true
-  toast('请先选择或新建产品/工位', true)
-  location.hash = 'projects'
-  return false
-}
-
-async function refreshView(view){
-  try{
-    if (view === 'home'){ await loadHome() }
-    else if (view === 'projects') await loadProjects()
-    else if (view === 'capture'){ if (!needProject()) return; await loadProject(); await loadImages() }
-    else if (view === 'label'){ if (!needProject()) return; await loadLabelImages() }
-    else if (view === 'accuracy'){ if (!needProject()) return; await loadAccuracy() }
-    else if (view === 'datasets'){ if (!needProject()) return; await loadDatasets() }
-    else if (view === 'train'){ if (!needProject()) return; await loadDatasets(); await loadJobs() }
-    else if (view === 'models'){ if (!needProject()) return; await loadModels() }
-    else if (view === 'monitor'){ if (!needProject()) return; await loadMonitor() }
-  } catch(error){ toast(error.message, true) }
-}
-
-/* ------------------------------------------------------------------ home */
-
-function showHelp(){
-  const dialog = $('helpDialog')
-  if (!dialog.open) dialog.showModal()
-  localStorage.setItem('pcbPlatformHelpSeen', '1')
-}
-
-async function loadHome(){
-  const summaryNode = $('homeProjectSummary')
-  if (!state.project){
-    $('homeNew').textContent = '先新建产品/工位'
-    $('homeLabeled').textContent = '—'
-    $('homeReview').textContent = '—'
-    summaryNode.innerHTML = '<p class="empty">还没有产品/工位。点右上角“新建产品/工位”，填产品名称和工位即可。</p>'
-    return
-  }
-  const summary = await api('/api/projects/' + state.project.id + '/summary')
-  $('homeNew').textContent = '共 ' + summary.total + ' 张'
-  $('homeLabeled').textContent = summary.new + ' 张待框'
-  $('homeReview').textContent = '点击查看'
-  summaryNode.innerHTML = '<div class="panelhead"><h2>' + esc(state.project.name) + '</h2>'
-    + '<span class="muted">' + esc(state.project.board_model || '未填板型') + ' · ' + esc(state.project.station || '未填工位') + '</span></div>'
-    + '<div class="metric"><div><span>图片总数</span><strong>' + summary.total + '</strong></div>'
-    + '<div><span>待框缺陷</span><strong>' + summary.new + '</strong></div>'
-    + '<div><span>已保存</span><strong>' + summary.approved + '</strong></div>'
-    + '<div><span>已驳回</span><strong>' + summary.rejected + '</strong></div>'
-    + '<div><span>待处理反馈</span><strong>' + summary.feedback_open + '</strong></div></div>'
-  await loadAccuracy()
-}
-
-/* --------------------------------------------------------------- accuracy */
-
-async function loadAccuracy(){
-  if (!state.project) return
-  const data = await api('/api/projects/' + state.project.id + '/accuracy')
-  renderAccuracy(data)
-}
-
-function renderAccuracy(data){
-  const rows = (data.rows || []).filter(row => row.key !== 'good_solder')
-  const source = data.source || '暂无已发布模型'
-  $('accuracySource').textContent = source
-  $('homeAccuracySource').textContent = source
-  $('accuracyNote').textContent = data.note || ''
-  const overall = data.overall || {}
-  const pieces = []
-  if (overall.top1 != null) pieces.push(['整体准确率', pct(overall.top1)])
-  if (overall.map50 != null) pieces.push(['mAP50', pct(overall.map50)])
-  if (overall.defect_precision != null) pieces.push(['缺陷精确率', pct(overall.defect_precision)])
-  if (overall.defect_recall != null) pieces.push(['缺陷召回率', pct(overall.defect_recall)])
-  $('accuracySummary').innerHTML = pieces.map(([label, value]) =>
-    '<div><span>' + label + '</span><strong>' + value + '</strong></div>').join('')
-    || '<div><span>指标</span><strong>—</strong></div>'
-  const table = accuracyTable(rows)
-  $('accuracyTable').innerHTML = table
-  $('homeAccuracyTable').innerHTML = table
-}
-
-function accuracyTable(rows){
-  if (!rows.length){
-    return '<p class="empty">还没有可用的准确率数据。请先训练并发布模型。</p>'
-  }
-  return '<table><thead><tr><th>缺陷类型</th><th>缺陷召回率</th><th>报出后正确率</th><th>样本数</th></tr></thead><tbody>'
-    + rows.map(row => {
-      const accuracy = row.accuracy == null ? '未评估' : pct(row.accuracy)
-      const precision = row.precision == null ? '—' : pct(row.precision)
-      const klass = row.accuracy == null ? '' : row.accuracy >= .9 ? 'acc-good' : row.accuracy >= .7 ? 'acc-warn' : 'acc-bad'
-      return '<tr><td><b>' + esc(row.label) + '</b></td>'
-        + '<td><span class="acc ' + klass + '">' + accuracy + '</span></td>'
-        + '<td>' + precision + '</td><td>' + (row.support == null ? '—' : row.support) + '</td></tr>'
-    }).join('') + '</tbody></table>'
-    + '<p class="muted" style="margin-top:8px">召回率 = 该类真实缺陷被检出的比例；样本数少时数字波动大，低于 80% 的类型可结合抽样结果检查。</p>'
-}
-
-/* ------------------------------------------------------------- projects */
-
-async function loadProjects(){
-  state.projects = await api('/api/projects')
-  renderProjects()
-  fillProjectSelect()
-}
-
-function renderProjects(){
-  const list = $('projectList')
-  list.replaceChildren()
-  for (const project of state.projects){
-    const card = document.createElement('button')
-    card.className = 'card' + (state.project?.id === project.id ? ' active' : '')
-    card.innerHTML = '<strong>' + esc(project.name) + '</strong>'
-      + '<small>' + esc(project.board_model || '未填板型') + ' · ' + esc(project.station || '未填工位') + '</small>'
-      + '<div class="meta"><span>图片 ' + project.images + '</span><span>待标注 ' + project.pending + '</span>'
-      + '<span>数据集 ' + project.datasets + '</span><span>模型 ' + project.models + '</span></div>'
-    card.onclick = () => selectProject(project.id).then(() => { location.hash = 'capture' })
-    list.append(card)
-  }
-  if (!state.projects.length) list.innerHTML = '<p class="empty">还没有项目。下面的表单创建第一个。</p>'
-  $('projectStats').textContent = state.projects.length + ' 个项目'
-}
-
-function fillProjectSelect(){
-  const select = $('projectSelect')
-  select.replaceChildren()
-  if (!state.projects.length) select.append(new Option('暂无项目', ''))
-  for (const project of state.projects) select.append(new Option(project.name + ' · ' + (project.station || '未填工位'), project.id))
-  if (state.project && state.projects.some(project => project.id === state.project.id)) select.value = state.project.id
-}
-
-async function selectProject(id){
-  if (!id) return
-  state.project = await api('/api/projects/' + id)
-  localStorage.setItem('pcbPlatformProject', id)
-  fillProjectSelect()
-  updateProjectLabels()
-  if (currentView() !== 'projects') await refreshView(currentView())
-}
-
-function updateProjectLabels(){
-  const name = state.project?.name || '未选择项目'
-  $('captureTitle').textContent = '采集 / 上传 · ' + name
-}
-
-/* --------------------------------------------------------------- capture */
 
 async function loadProject(){
   if (state.project) state.project = await api('/api/projects/' + state.project.id)
-  const form = $('uploadForm')
-  if (form){
-    if (!form.elements.batch.value) form.elements.batch.value = localStorage.getItem('pcbPlatformBatch') || ''
-    if (!form.elements.board_serial.value) form.elements.board_serial.value = localStorage.getItem('pcbPlatformBoard') || ''
+}
+
+const isProcessed = image => image && image.state !== 'new' && image.review_status === 'approved'
+
+function updateEditorAccess(){
+  const locked = !state.img || isProcessed(state.image)
+  document.querySelector('.detail-tools').inert = !state.img
+  document.querySelector('.board-overview').inert = !state.img
+  document.querySelector('.site-tools').inert = !state.img
+  $('siteHint').hidden = !!locked
+  for (const id of ['annotator','saveLabels']) $(id).disabled = !!locked
+  $('deleteTrainingImage').disabled = !state.img
+  $('setReference').hidden = locked || !!state.reference
+  $('manualAlign').hidden = !state.img || !state.reference || state.reference.id === state.image?.id || !!state.alignment
+  $('readOnlyHint').hidden = !isProcessed(state.image)
+}
+
+function resetEditor(){
+  state.image=null;state.img=null;state.boxes=[];state.selected=-1
+  state.annotationDirty=false;state.siteDirty=false;state.editingSites=false
+  state.selectedSite=null;state.selectedSites=[];state.overview=null
+  ++state.imageRequest;++state.alignmentRequest
+  closeSiteDefectPopup()
+  for (const id of ['labelCanvas','overviewCanvas']){
+    const canvas=$(id)
+    canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height)
   }
-}
-
-function fillStaticSelects(){
-  fillSelect($('boxClass'), state.meta.det_classes, {empty:null})
-  fillSelect($('datasetTemplate'), Object.entries(state.meta.templates).map(([key, value]) => ({key, label:value.label})), {empty:null})
-}
-
-async function loadImages(){
-  const pid = state.project.id
-  let query = ''
-  if (state.filter === 'new') query = '?state=new'
-  else if (state.filter === 'labeled') query = '?state=labeled'
-  else if (state.filter !== 'all') query = '?review=' + state.filter
-  state.images = await api('/api/projects/' + pid + '/images' + query)
-  renderImages()
-  $('imageCount').textContent = state.images.length + ' 张'
-  $('captureStats').textContent = '图片 ' + state.project.images + ' · 已保存 ' + state.project.approved
-  document.querySelectorAll('[data-img-filter]').forEach(button => button.classList.toggle('active', button.dataset.imgFilter === state.filter))
-}
-
-function renderImages(){
-  const grid = $('imageGrid')
-  grid.replaceChildren()
-  for (const image of state.images){
-    const card = document.createElement('article')
-    card.className = 'image-card'
-    const badge = image.state === 'new' ? 'new' : image.review_status
-    const badgeText = image.state === 'new' ? '待框缺陷' : statusText(image.review_status)
-    const open = document.createElement('button')
-    open.type = 'button'
-    open.className = 'open-training-image'
-    open.innerHTML = '<img loading="lazy" src="' + base + '/api/images/' + image.id + '/file?w=320" alt="">'
-      + '<span class="info"><strong title="' + esc(image.filename) + '">' + esc(image.filename) + '</strong>'
-      + '<small>' + esc(image.batch || '无批次') + ' · ' + (image.label_count || 0) + ' 个框</small>'
-      + '<span class="tags"><span class="badge ' + esc(badge) + '">' + badgeText + '</span></span></span>'
-    open.onclick = async () => {
-      try { await openImage(image.id); location.hash='label' }
-      catch(error) { toast(error.message,true) }
-    }
-    const remove = document.createElement('button')
-    remove.type = 'button'
-    remove.className = 'danger'
-    remove.textContent = '删除图片'
-    remove.onclick = () => deleteTrainingImage(image.id)
-    card.append(open, remove)
-    grid.append(card)
-  }
-  if (!state.images.length) grid.innerHTML = '<p class="empty">还没有图片。先在上传区导入。</p>'
+  $('editorEmpty').hidden=false
+  document.querySelector('.annotation-workspace').hidden=true
+  $('deleteTrainingImage').disabled=true
+  $('saveLabels').disabled=true
+  updateEditorAccess()
+  renderSites()
+  updateLabelProgress()
 }
 
 async function deleteTrainingImage(id) {
+  if (state.savingAnnotation) return
   try {
     const result = await api('/api/images/' + id, undefined, 'DELETE')
-    if (state.image?.id === id) {
-      state.image = null
-      state.img = null
-      state.boxes = []
-      state.selected = -1
-      $('labelCanvas').getContext('2d').clearRect(0,0,$('labelCanvas').width,$('labelCanvas').height)
-      drawBoxList()
-    }
+    if (state.image?.id === id) resetEditor()
     await loadProject()
-    if (currentView() === 'label') await loadLabelImages()
-    else await loadImages()
+    await loadLabelImages(false)
+    if (!state.image && state.images.length) await openImage(state.images[0].id)
+    await loadModelUpdate()
     toast(result.retained_in_versions ? '已从图库删除，历史数据集保留该图片快照' : '图片已删除')
   } catch(error) { toast(error.message, true) }
 }
@@ -297,30 +95,32 @@ $('deleteTrainingImage').onclick = () => {
   else toast('请先选择图片',true)
 }
 
-function statusText(status){
-  return {pending:'待处理', approved:'已保存', rejected:'已驳回', new:'待框缺陷'}[status] || status
-}
-
 /* --------------------------------------------------------------- labeling */
 
-async function loadLabelImages(){
-  state.images = await api('/api/projects/' + state.project.id + '/images?limit=300')
+async function loadLabelImages(openCurrent=true){
+  const query=new URLSearchParams({limit:'300'})
+  if (state.filter==='new') query.set('processing','unprocessed')
+  else if (state.filter==='approved') query.set('processing','processed')
+  state.images=await api('/api/projects/'+state.project.id+'/images?'+query)
+  document.querySelectorAll('[data-img-filter]').forEach(button=>button.classList.toggle('active',button.dataset.imgFilter===state.filter))
   const list = $('labelList')
   list.replaceChildren()
   for (const image of state.images){
+    const processed=isProcessed(image)
     const row = document.createElement('div')
-    row.className = 'row' + (state.image?.id === image.id ? ' active' : '')
+    row.className = 'row '+(processed ? 'image-processed' : 'image-unprocessed')+(state.image?.id === image.id ? ' active' : '')
     row.dataset.id = image.id
-    row.innerHTML = '<img loading="lazy" src="' + base + '/api/images/' + image.id + '/file?w=160" alt="">'
-      + '<div><strong>' + esc(image.filename) + '</strong><small>' + statusText(image.review_status) + ' · '
+    row.innerHTML = '<img loading="lazy" src="' + base + '/api/images/' + image.id + '/file?v=' + image.revision + '&w=160" alt="">'
+      + '<div><strong>' + esc(image.filename) + '</strong><small>' + (processed ? '已处理' : '未处理') + ' · '
       + (image.label_count || 0) + ' 框</small></div>'
-    row.onclick = () => openImage(image.id)
+    row.onclick = () => openImage(image.id).catch(error => toast(error.message,true))
     list.append(row)
   }
   $('labelStats').textContent = state.images.length + ' 张图片'
-  if (state.image && state.images.some(image => image.id === state.image.id)) openImage(state.image.id)
-  else if (state.images.length) openImage(state.images[0].id)
-  else $('canvasHint').textContent = '项目还没有图片，请先到“拍照/上传”上传。'
+  if (!openCurrent) return updateLabelProgress()
+  if (state.image && state.images.some(image => image.id === state.image.id)) await openImage(state.image.id)
+  else if (state.images.length) await openImage(state.images[0].id)
+  else resetEditor()
   updateLabelProgress()
 }
 
@@ -334,31 +134,170 @@ function updateLabelProgress(){
 function moveImage(offset){
   const index = state.images.findIndex(image => image.id === state.image?.id)
   const next = index + offset
-  if (next >= 0 && next < state.images.length) openImage(state.images[next].id)
+  if (next >= 0 && next < state.images.length) openImage(state.images[next].id).catch(error=>toast(error.message,true))
 }
 
 $('prevImage').onclick = () => moveImage(-1)
 $('nextImage').onclick = () => moveImage(1)
 
 async function openImage(id){
-  state.image = await api('/api/images/' + id)
-  state.boxes = state.image.labels.map(item => ({class:item.class, x1:item.x1, y1:item.y1, x2:item.x2, y2:item.y2}))
+  if (!leaveAnnotation()) return
+  closeSiteDefectPopup()
+  const requestId = ++state.imageRequest
+  ++state.alignmentRequest
+  state.img = null
+  state.image = null
+  updateEditorAccess()
+  state.overview = null
+  state.alignment = null
+  $('labelCanvas').getContext('2d').clearRect(0,0,$('labelCanvas').width,$('labelCanvas').height)
+  $('overviewCanvas').getContext('2d').clearRect(0,0,$('overviewCanvas').width,$('overviewCanvas').height)
+  let detail = await api('/api/images/' + id)
+  if (requestId !== state.imageRequest || detail.project_id !== state.project?.id) return
+  state.image = detail
+  state.boxes = []
+  state.viewport = {x:0,y:0,w:1,h:1}
+  state.annotationDirty = false
+  dragStart = null
+  previewBox = null
+  dragging = false
+  $('detailBrightness').value = 100
+  const view = detail.annotation_view || {}
+  state.alignmentDisabled = false
   state.selected = -1
   state.hoverBox = -1
   hideHoverInfo()
   $('annotator').value = state.image.labels[0]?.annotator || localStorage.getItem('pcbPlatformAnnotator') || ''
-  const image = new Image()
-  image.onload = () => { if (state.image?.id === id) { state.img = image; drawCanvas() } }
-  image.src = base + '/api/images/' + id + '/file?' + Date.now()
+  const [reference, template] = await Promise.all([
+    api('/api/projects/' + detail.project_id + '/alignment-reference'),
+    api('/api/projects/' + detail.project_id + '/solder-template'),
+  ])
+  if (requestId !== state.imageRequest) return
+  let preview = null
+  const hint = $('alignmentHint')
+  hint.hidden = true
+  if (reference && reference.id !== id && !detail.alignment){
+    hint.hidden = false
+    hint.textContent = '正在匹配板面位置…'
+    try{
+      const saved = view.alignment
+      preview = await api('/api/images/'+id+'/alignment',{
+        reference_id:reference.id, include_preview:false, matrix:saved?.reference_id === reference.id ? saved.matrix : undefined,
+      })
+      if (requestId !== state.imageRequest) return
+      hint.hidden = true
+    }catch(error){
+      if (requestId !== state.imageRequest) return
+      hint.textContent = error.message
+    }
+    detail = await api('/api/images/' + id)
+    if (requestId !== state.imageRequest) return
+  }
+  const url = base + '/api/images/' + id + '/file?v=' + detail.revision
+  const displayUrl = detail.alignment ? url : preview?.preview || url
+  const image = await loadAnnotationImage(displayUrl)
+  if (requestId !== state.imageRequest) return
+  state.image = detail
+  state.boxes = detail.labels.map(item => ({...item}))
+  state.alignment = detail.alignment || (preview?.preview ? {reference_id:preview.reference_id,matrix:preview.matrix} : null)
+  state.img = image
+  const thumbnail = document.querySelector('#labelList .row[data-id="'+id+'"] img')
+  if (thumbnail) thumbnail.src = displayUrl === url ? url + '&w=160' : displayUrl
+  $('editorEmpty').hidden=true
+  document.querySelector('.annotation-workspace').hidden=false
+  state.reference = reference
+  updateEditorAccess()
+  state.siteTemplate=template
+  state.siteDirty=false
+  state.editingSites=false
+  state.selectedSite=null
+  state.selectedSites=[]
+  $('siteSearch').value=''
+  state.overview = image
   document.querySelectorAll('#labelList .row').forEach(row => row.classList.toggle('active', row.dataset.id === id))
-  drawBoxList()
   updateLabelProgress()
+  drawCanvas()
+}
+
+$('setReference').onclick = async () => {
+  if (!state.img || isProcessed(state.image) || !leaveAnnotation()) return
+  const id = state.image.id
+  try{
+    await api('/api/projects/'+state.project.id+'/alignment-reference',{image_id:id,only_if_empty:true})
+    if (state.image?.id === id) await openImage(id)
+  }catch(error){toast(error.message,true)}
+}
+
+let alignmentDraft = null
+function drawAlignmentPoints(){
+  const draft = alignmentDraft
+  const count = draft.points.length
+  const source = count < 4
+  const picture = source ? draft.source : draft.reference
+  const canvas = $('pointCanvas')
+  const scale = Math.min(1, 900/picture.naturalWidth, 540/picture.naturalHeight)
+  canvas.width = Math.max(1,Math.round(picture.naturalWidth*scale))
+  canvas.height = Math.max(1,Math.round(picture.naturalHeight*scale))
+  const ctx = canvas.getContext('2d')
+  ctx.drawImage(picture,0,0,canvas.width,canvas.height)
+  draft.points.slice(source ? 0 : 4).forEach(([x,y],i)=>{
+    ctx.fillStyle='#12324a';ctx.strokeStyle='#fff'
+    ctx.beginPath();ctx.arc(x*canvas.width,y*canvas.height,9,0,Math.PI*2);ctx.fill();ctx.stroke()
+    ctx.fillStyle='#fff';ctx.textAlign='center';ctx.fillText(i+1,x*canvas.width,y*canvas.height+3)
+  })
+  $('pointInstruction').textContent = count === 8 ? '已选好四组对应点，可完成对齐。'
+    : (source ? '当前图片：顺时针选择板面四角' : '标准图：按相同顺序选择对应四角')+'（第 '+(count%4+1)+' 点）'
+  $('undoPoint').disabled = count === 0
+  $('applyAlignment').disabled = count !== 8
+}
+
+$('manualAlign').onclick = async () => {
+  if (!state.img || !state.reference || state.alignment) return
+  const request = state.imageRequest, referenceId = state.reference.id
+  try{
+    const reference = await loadAnnotationImage(base+'/api/projects/'+state.project.id+'/alignment-reference/file?id='+encodeURIComponent(referenceId))
+    if (request !== state.imageRequest) return
+    alignmentDraft = {source:state.img, reference, referenceId, id:state.image.id, points:[]}
+    drawAlignmentPoints()
+    $('alignmentDialog').showModal()
+  }catch(error){toast(error.message,true)}
+}
+$('pointCanvas').onclick = event => {
+  if (!alignmentDraft || alignmentDraft.busy || alignmentDraft.points.length >= 8) return
+  const rect = event.currentTarget.getBoundingClientRect()
+  alignmentDraft.points.push([(event.clientX-rect.left)/rect.width,(event.clientY-rect.top)/rect.height])
+  drawAlignmentPoints()
+}
+$('undoPoint').onclick = () => {if (!alignmentDraft.busy){alignmentDraft.points.pop(); drawAlignmentPoints()}}
+$('cancelAlignment').onclick = () => $('alignmentDialog').close()
+$('alignmentDialog').oncancel = event => {if (alignmentDraft?.busy) event.preventDefault()}
+$('alignmentDialog').onclose = () => {alignmentDraft=null}
+$('applyAlignment').onclick = async () => {
+  const draft = alignmentDraft
+  if (!draft || draft.busy || draft.points.length !== 8) return
+  if ((state.annotationDirty || state.siteDirty) && !confirm("完成对齐将重新打开图片并丢弃未保存的修改，继续吗？")) return
+  draft.busy=true
+  $('applyAlignment').disabled=true
+  $('cancelAlignment').disabled=true
+  try{
+    await api('/api/images/'+draft.id+'/alignment',{reference_id:draft.referenceId,include_preview:false,
+      source_points:draft.points.slice(0,4),reference_points:draft.points.slice(4)})
+    state.annotationDirty=false
+    state.siteDirty=false
+    $('alignmentDialog').close()
+    await openImage(draft.id)
+  }catch(error){$('pointInstruction').textContent=error.message}
+  finally{draft.busy=false;$('cancelAlignment').disabled=false;$('applyAlignment').disabled=false}
 }
 
 function boxAt(point){
   for (let index = state.boxes.length - 1; index >= 0; index--){
-    const box = state.boxes[index]
-    if (point[0] >= box.x1 && point[0] <= box.x2 && point[1] >= box.y1 && point[1] <= box.y2) return index
+    const polygon = displayPolygon(state.boxes[index])
+    const turns = polygon.map((a,i)=>{
+      const b = polygon[(i+1)%polygon.length]
+      return (b[0]-a[0])*(point[1]-a[1])-(b[1]-a[1])*(point[0]-a[0])
+    })
+    if (turns.length && (turns.every(turn=>turn>=-1e-10) || turns.every(turn=>turn<=1e-10))) return index
   }
   return -1
 }
@@ -371,13 +310,16 @@ function showHoverInfo(){
     return
   }
   const box = state.boxes[state.hoverBox]
+  const bounds = boundsOf(displayPolygon(box))
+  if (!bounds) { info.hidden=true; return }
   const canvas = $('labelCanvas'), wrap = canvas.parentElement
   const canvasRect = canvas.getBoundingClientRect(), wrapRect = wrap.getBoundingClientRect()
   info.textContent = '缺陷：' + labelOf(box.class)
   info.hidden = false
   const width = info.offsetWidth
-  const left = canvasRect.left - wrapRect.left + box.x1 * canvasRect.width
-  const top = canvasRect.top - wrapRect.top + box.y1 * canvasRect.height - 30
+  const v = state.viewport
+  const left = canvasRect.left - wrapRect.left + (bounds.x1-v.x)/v.w * canvasRect.width
+  const top = canvasRect.top - wrapRect.top + (bounds.y1-v.y)/v.h * canvasRect.height - 30
   info.style.left = Math.max(4, Math.min(left, wrapRect.width - width - 6)) + 'px'
   info.style.top = Math.max(4, top) + 'px'
 }
@@ -390,34 +332,49 @@ function hideHoverInfo(){
 function drawCanvas(){
   const canvas = $('labelCanvas')
   if (!state.img) return
+  const image = state.overview || state.img
   const wrap = canvas.parentElement
   const maxWidth = Math.max(280, wrap.clientWidth - 24)
-  const maxHeight = Math.max(300, Math.min(window.innerHeight - 300, 760))
-  const ratio = Math.min(maxWidth / state.img.naturalWidth, maxHeight / state.img.naturalHeight, 2)
-  const imageW = Math.max(1, Math.round(state.img.naturalWidth * ratio))
-  const imageH = Math.max(1, Math.round(state.img.naturalHeight * ratio))
+  const maxHeight = Math.max(200, wrap.clientHeight - 20)
+  const ratio = Math.min(maxWidth / image.naturalWidth, maxHeight / image.naturalHeight, 2)
+  const imageW = Math.max(1, Math.round(image.naturalWidth * ratio))
+  const imageH = Math.max(1, Math.round(image.naturalHeight * ratio))
   canvas.width = imageW
   canvas.height = imageH
   const context = canvas.getContext('2d')
   context.clearRect(0, 0, imageW, imageH)
-  context.drawImage(state.img, 0, 0, imageW, imageH)
+  const v = state.viewport
+  context.filter = `brightness(${$('detailBrightness').value}%)`
+  context.drawImage(image, v.x*image.naturalWidth, v.y*image.naturalHeight,
+    v.w*image.naturalWidth, v.h*image.naturalHeight, 0, 0, imageW, imageH)
+  context.filter = 'none'
+  drawSiteOverlay(context,imageW,imageH)
   state.boxes.forEach((box, index) => {
     const color = colorOf(box.class)
     context.lineWidth = index === state.selected ? 3.5 : 2.4
     context.strokeStyle = color
     context.fillStyle = color + '22'
-    const x = box.x1 * imageW, y = box.y1 * imageH
-    const w = (box.x2 - box.x1) * imageW, h = (box.y2 - box.y1) * imageH
-    context.fillRect(x, y, w, h)
-    context.strokeRect(x, y, w, h)
+    const points = displayPolygon(box)
+    if (!points.length) return
+    context.beginPath()
+    points.forEach(([x,y],i)=>{
+      const cx=(x-v.x)/v.w*imageW, cy=(y-v.y)/v.h*imageH
+      if (i===0) context.moveTo(cx,cy)
+      else context.lineTo(cx,cy)
+    })
+    context.closePath(); context.fill(); context.stroke()
   })
+  $('zoomValue').textContent = (1/v.w).toFixed(1).replace('.0','') + '×'
+  drawOverview()
+  renderSites()
 }
 
 function canvasPoint(event){
   const canvas = $('labelCanvas')
   const rect = canvas.getBoundingClientRect()
-  return [Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
-          Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height))]
+  const v = state.viewport
+  return [v.x + Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width))*v.w,
+          v.y + Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height))*v.h]
 }
 
 let dragStart = null
@@ -426,8 +383,13 @@ let pressBox = -1
 let dragging = false
 
 $('labelCanvas').addEventListener('pointerdown', event => {
-  if (!state.img || event.button !== 0) return
+  if (!state.img || event.button!==0) return
   const point = canvasPoint(event)
+  if (isProcessed(state.image)){
+    const site=siteAt(point)
+    if (site) inspectSite(site)
+    return
+  }
   pressBox = boxAt(point)
   state.selected = -1
   dragging = false
@@ -436,18 +398,19 @@ $('labelCanvas').addEventListener('pointerdown', event => {
 })
 
 $('labelCanvas').addEventListener('pointermove', event => {
+  if (!state.img) return
   if (!dragStart){
     const boxIndex = boxAt(canvasPoint(event))
     if (boxIndex !== state.hoverBox){
       state.hoverBox = boxIndex
       showHoverInfo()
     }
-    $('labelCanvas').style.cursor = boxIndex >= 0 ? 'pointer' : 'crosshair'
+    $('labelCanvas').style.cursor = boxIndex >= 0 || siteAt(canvasPoint(event)) ? 'pointer' : isProcessed(state.image) ? 'default' : 'crosshair'
     return
   }
   const point = canvasPoint(event)
   const distance = Math.abs(point[0]-dragStart[0]) + Math.abs(point[1]-dragStart[1])
-  if (distance > .006) dragging = true
+  if (distance/state.viewport.w > .006) dragging = true
   if (!dragging) return
   previewBox = [Math.min(dragStart[0], point[0]), Math.min(dragStart[1], point[1]),
                 Math.max(dragStart[0], point[0]), Math.max(dragStart[1], point[1])]
@@ -455,12 +418,14 @@ $('labelCanvas').addEventListener('pointermove', event => {
   const context = $('labelCanvas').getContext('2d')
   context.strokeStyle = '#fff'
   context.setLineDash([4,3])
-  context.strokeRect(previewBox[0]*$('labelCanvas').width, previewBox[1]*$('labelCanvas').height,
-    (previewBox[2]-previewBox[0])*$('labelCanvas').width, (previewBox[3]-previewBox[1])*$('labelCanvas').height)
+  const v = state.viewport
+  context.strokeRect((previewBox[0]-v.x)/v.w*$('labelCanvas').width, (previewBox[1]-v.y)/v.h*$('labelCanvas').height,
+    (previewBox[2]-previewBox[0])/v.w*$('labelCanvas').width, (previewBox[3]-previewBox[1])/v.h*$('labelCanvas').height)
   context.setLineDash([])
 })
 
 $('labelCanvas').addEventListener('pointerup', event => {
+  if (event.button!==0) return
   if (!dragStart) return
   const point = canvasPoint(event)
   const box = [Math.min(dragStart[0], point[0]), Math.min(dragStart[1], point[1]),
@@ -468,423 +433,694 @@ $('labelCanvas').addEventListener('pointerup', event => {
   const moved = dragging
   dragStart = null; previewBox = null; dragging = false
   if (!moved){
+    if (state.editingSites){
+      editSiteAt(point)
+      return
+    }
+    const site=siteAt(point)
     if (pressBox >= 0){
-      state.selected = pressBox
-      drawCanvas(); drawBoxList()
+      openBoxDefectPopup(pressBox)
+    } else if (site){
+      selectAnnotationSite(site)
     }
     pressBox = -1
     return
   }
-  if ((box[2]-box[0]) > 0.004 && (box[3]-box[1]) > 0.004){
-    const key = $('boxClass').value
-    if (key){
-      state.boxes.push({class:key, x1:box[0], y1:box[1], x2:box[2], y2:box[3]})
-      state.selected = state.boxes.length - 1
+  if ((box[2]-box[0])/state.viewport.w > 0.004 && (box[3]-box[1])/state.viewport.h > 0.004){
+    if (state.editingSites){
+      if (boxFromDisplay(box,'')) addTemplateSite(box)
+      else toast('该位置超出原图拍摄范围',true)
+      drawCanvas()
+      return
     }
+    const sites=sitesInRectangle(box)
+    const ids=sites.map(site=>site.id)
+    state.selectedSites=event.ctrlKey || event.metaKey || event.shiftKey ? [...new Set([...state.selectedSites,...ids])] : ids
+    state.selectedSite=state.selectedSites.at(-1) || null
   }
   pressBox = -1
-  drawCanvas(); drawBoxList()
+  drawCanvas()
 })
 
 $('labelCanvas').addEventListener('pointerleave', () => { state.hoverBox = -1; hideHoverInfo() })
 
-$('labelCanvas').addEventListener('contextmenu', event => {
-  event.preventDefault()
-  if (!state.img) return
-  const boxIndex = boxAt(canvasPoint(event))
-  if (boxIndex >= 0){
-    state.boxes.splice(boxIndex, 1)
-    state.selected = -1
-    state.hoverBox = -1
-    hideHoverInfo()
-    drawCanvas(); drawBoxList()
-  }
-})
-
-function drawBoxList(){
-  const list = $('boxList')
-  list.replaceChildren()
-  state.boxes.forEach((box, index) => {
-    const row = document.createElement('div')
-    row.className = 'box-row'
-    row.innerHTML = '<span class="swatch" style="background:' + colorOf(box.class) + '"></span>'
-      + '<select></select><button class="quiet">删除</button>'
-    const select = row.querySelector('select')
-    fillSelect(select, state.meta.det_classes, {empty:null})
-    select.value = box.class
-    select.onchange = () => { box.class = select.value; drawCanvas(); drawBoxList() }
-    row.querySelector('button').onclick = () => { state.boxes.splice(index,1); state.selected=-1; drawCanvas(); drawBoxList() }
-    row.onclick = event => { if (event.target === row || event.target.tagName === 'SPAN'){ state.selected = index; drawCanvas() } }
-    list.append(row)
-  })
-  if (!state.boxes.length) list.innerHTML = '<p class="muted">还没有框。拖动鼠标画框。</p>'
-}
-
-$('deleteBox').onclick = () => {
-  if (state.selected < 0) return
-  state.boxes.splice(state.selected, 1)
-  state.selected = -1
-  drawCanvas(); drawBoxList()
-}
-
 $('saveLabels').onclick = async () => {
-  if (!state.image) return toast('先选择图片', true)
+  if (!state.image || !state.img || state.savingAnnotation) return toast('请等待图片加载完成', true)
   const annotator = $('annotator').value.trim()
   localStorage.setItem('pcbPlatformAnnotator', annotator)
   const savedId = state.image.id
+  const revision = state.image.revision
+  $('saveLabels').disabled = true
+  $('prevImage').disabled = true
+  $('nextImage').disabled = true
+  state.savingAnnotation = true
+  $('annotationWorkspace').inert = true
+  $('uploadForm').inert = true
   try{
-    state.image = await api('/api/images/' + savedId + '/labels', {
-      boxes: state.boxes.map(box => ({class:box.class, x1:box.x1, y1:box.y1, x2:box.x2, y2:box.y2})),
+    if (state.siteDirty) await persistSites()
+    const saved = await api('/api/images/' + savedId + '/labels', {
+      boxes: state.boxes.map(box => ({class:box.class, x1:box.x1, y1:box.y1, x2:box.x2, y2:box.y2,polygon:box.polygon || []})),
       annotator,
+      revision,
+      primary_class:state.image.primary_class,
+      note:state.image.note,
+      annotation_view:{
+        alignment:state.alignment ? {matrix:state.alignment.matrix,reference_id:state.alignment.reference_id} : null,
+        alignment_disabled:!!state.alignmentDisabled,
+        quality_flags:[],
+        quality_note:'',
+      },
     })
-    const index = state.images.findIndex(image => image.id === savedId)
-    await loadLabelImages()
-    if (index >= 0 && index < state.images.length - 1){
-      await openImage(state.images[index + 1].id)
-      toast('已保存，自动打开下一张')
-    } else {
-      toast('已保存。这是最后一张，已全部存好。')
-    }
+    state.image = saved
+    state.selected = -1
+    state.selectedSites = []
+    state.selectedSite = null
+    state.editingSites = false
+    closeSiteDefectPopup()
+    dragStart=null;dragging=false;previewBox=null
+    drawCanvas()
+    updateEditorAccess()
+    state.annotationDirty = false
+    state.savingAnnotation = false
+    if (state.filter === 'new') state.filter = 'approved'
+    await loadProject()
+    await loadLabelImages(false)
+    await loadModelUpdate()
+    toast('已保存')
   } catch(error){ toast(error.message, true) }
+  finally { state.savingAnnotation=false; $('uploadForm').inert=false; $('annotationWorkspace').inert=false; updateEditorAccess(); updateLabelProgress() }
 }
 
-window.addEventListener('resize', () => { if (currentView() === 'label') drawCanvas() })
-
-/* --------------------------------------------------------------- datasets */
-
-async function loadDatasets(){
-  state.datasets = await api('/api/projects/' + state.project.id + '/datasets')
-  const list = $('datasetList')
-  list.replaceChildren()
-  for (const dataset of state.datasets){
-    const counts = safeJson(dataset.counts, {})
-    const warnings = safeJson(dataset.warnings, [])
-    const card = document.createElement('article')
-    card.className = 'panel'
-    card.innerHTML = '<div class="panelhead"><h2>v' + dataset.version + ' · ' + esc(state.meta.templates[dataset.template]?.label || dataset.template) + '</h2>'
-      + '<small>' + date(dataset.created) + '</small></div>'
-      + '<div class="metric"><div><span>训练</span><strong>' + (counts.train || 0) + '</strong></div>'
-      + '<div><span>验证</span><strong>' + (counts.val || 0) + '</strong></div>'
-      + '<div><span>测试</span><strong>' + (counts.test || 0) + '</strong></div>'
-      + '<div><span>标注框</span><strong>' + (counts.boxes || 0) + '</strong></div></div>'
-      + Object.entries(counts.splits || {}).map(([split,stats])=>'<p>'+esc(split)+' · 独立板 '+stats.boards+' · 无框图片 '+stats.normal+' · 缺陷框 '+stats.boxes+'<br>'+Object.entries(stats.classes || {}).map(([key,count])=>esc(labelOf(key))+' '+count).join(' · ')+'</p>').join('')
-      + (warnings.length ? '<div class="warnbox">' + warnings.map(esc).join('<br>') + '</div>' : '')
-    list.append(card)
-  }
-  if (!state.datasets.length) list.innerHTML = '<p class="empty">还没有数据集版本。先标注并保存，再创建。</p>'
-  $('datasetStats').textContent = state.datasets.length + ' 个版本'
-  fillTrainDatasets()
-}
-
-function safeJson(value, fallback){
-  if (!value) return fallback
-  try{ return typeof value === 'string' ? JSON.parse(value) : value } catch { return fallback }
-}
-
-$('datasetForm').onsubmit = async event => {
-  event.preventDefault()
-  const form = event.target
-  try{
-    const result = await api('/api/projects/' + state.project.id + '/datasets', {
-      template: form.elements.template.value,
-      split_policy: form.elements.split_policy.value,
-      val_ratio: Number(form.elements.val_ratio.value),
-      test_ratio: Number(form.elements.test_ratio.value),
-      seed: Number(form.elements.seed.value),
-      created_by: form.elements.created_by.value,
-    })
-    toast('数据集 v' + result.version + ' 已创建：train ' + result.counts.train + ' / val ' + result.counts.val + ' / test ' + result.counts.test)
-    await loadDatasets()
-  } catch(error){ toast(error.message, true) }
-}
-
-/* ------------------------------------------------------------------ train */
-
-function fillTrainDatasets(){
-  const select = $('trainDataset')
-  select.replaceChildren()
-  for (const dataset of state.datasets){
-    const counts = safeJson(dataset.counts, {})
-    select.append(new Option('v' + dataset.version + ' · ' + dataset.template + ' · '
-      + (counts.train || 0) + '/' + (counts.val || 0) + '/' + (counts.test || 0), dataset.id))
-  }
-  if (!state.datasets.length) select.append(new Option('暂无数据集', ''))
-}
-
-$('trainDataset').onchange = () => {
-  const dataset = state.datasets.find(item => item.id === $('trainDataset').value)
-  if (!dataset) return
-  const template = state.meta.templates[dataset.template]
-  const form = $('trainForm')
-  form.elements.imgsz.value = template.imgsz
-  form.elements.model.value = template.model
-}
-
-$('trainForm').onsubmit = async event => {
-  event.preventDefault()
-  const form = event.target
-  if (!form.elements.dataset_id.value) return toast('请先创建数据集', true)
-  try{
-    const job = await api('/api/datasets/' + form.elements.dataset_id.value + '/train', {
-      epochs: Number(form.elements.epochs.value), imgsz: Number(form.elements.imgsz.value),
-      batch: Number(form.elements.batch.value), device: form.elements.device.value,
-      model: form.elements.model.value,
-    })
-    toast('训练任务已启动')
-    await loadJobs()
-    openJob(job.id)
-  } catch(error){ toast(error.message, true) }
-}
-
-async function loadJobs(){
-  state.jobs = await api('/api/projects/' + state.project.id + '/jobs')
-  renderJobs()
-  $('trainStats').textContent = state.jobs.length + ' 个任务'
-}
-
-function renderJobs(){
-  const list = $('jobList')
-  list.replaceChildren()
-  for (const job of state.jobs){
-    const row = document.createElement('div')
-    row.className = 'job' + (state.job === job.id ? ' active' : '')
-    row.innerHTML = '<div><strong>' + job.template + ' · ' + job.id.slice(0,8) + '</strong>'
-      + '<small>' + date(job.created) + ' · ' + job.state + '</small></div>'
-      + '<span class="tag ' + job.state + '">' + job.state + '</span>'
-    row.onclick = () => openJob(job.id)
-    list.append(row)
-  }
-  if (!state.jobs.length) list.innerHTML = '<p class="empty">还没有训练任务。</p>'
-}
-
-async function openJob(id){
-  state.job = id
-  renderJobs()
-  try{
-    const job = await api('/api/jobs/' + id)
-    $('jobState').textContent = job.state
-    $('jobLog').textContent = job.log_tail || '等待日志…'
-    $('jobLog').scrollTop = $('jobLog').scrollHeight
-    if (job.state === 'running' || job.state === 'queued') {
-      clearTimeout(state.timer)
-      state.timer = setTimeout(() => openJob(id), 2000)
-    } else {
-      clearTimeout(state.timer)
-      if (job.state === 'done') toast('训练完成，模型已注册')
-      if (job.metrics) await loadJobs()
-    }
-  } catch(error){ toast(error.message, true) }
-}
-
-/* ----------------------------------------------------------------- models */
-
-async function loadModels(){
-  state.models = await api('/api/projects/' + state.project.id + '/models')
-  const list = $('modelList')
-  list.replaceChildren()
-  for (const model of state.models){
-    const metrics = model.metrics || {}
-    const summary = model.card?.template === 'det'
-      ? 'mAP50 ' + pct(metrics.map50) + ' · mAP ' + pct(metrics.map)
-      : 'Top-1 ' + pct(metrics.top1) + ' · Top-5 ' + pct(metrics.top5)
-    const card = document.createElement('article')
-    card.className = 'panel'
-    card.innerHTML = '<div class="panelhead"><h2>' + esc(model.version) + ' · ' + esc(model.card?.template || '') + '</h2>'
-      + (model.deployed_station ? '<span class="tag done">已部署 ' + esc(model.deployed_station) + '</span>' : '') + '</div>'
-      + '<p>' + summary + ' · ' + date(model.created) + '</p>'
-      + '<small>SHA256 ' + esc(model.sha256.slice(0,16)) + '…</small>'
-      + '<div class="metric" id="metric-' + model.id + '"></div>'
-      + '<div class="toolbar"><a class="badge export" href="' + base + '/api/models/' + model.id + '/export">导出训练模型</a>'
-      + '<a class="badge" href="' + base + '/api/models/' + model.id + '/file">仅下载权重</a>'
-      + '<button class="primary publish">发布到工位</button></div>'
-    list.append(card)
-    renderMetrics(card.querySelector('#metric-' + model.id), model)
-    card.querySelector('.publish').onclick = async () => {
-      const station = prompt('发布到哪个工位？', state.project.station || '')
-      if (station === null) return
-      try{ await api('/api/models/' + model.id + '/publish', {station}); toast('已发布'); await loadModels() }
-      catch(error){ toast(error.message, true) }
-    }
-  }
-  if (!state.models.length) list.innerHTML = '<p class="empty">还没有模型。训练成功后会自动注册。</p>'
-  $('modelStats').textContent = state.models.length + ' 个模型版本'
-}
-
-$('autoTrain').onclick = async () => {
-  if (!needProject()) return
-  const button = $('autoTrain')
-  button.disabled = true
-  $('autoTrainState').textContent = '准备训练…'
-  $('autoTrainLog').textContent = ''
-  try{
-    const dataset = await api('/api/projects/' + state.project.id + '/datasets', {
-      template: 'det', split_policy: 'board', val_ratio: .2, test_ratio: .2,
-      seed: 20261110, created_by: 'auto',
-    })
-    const job = await api('/api/datasets/' + dataset.id + '/train', {
-      epochs: Number($('autoEpochs').value), imgsz: Number($('autoImgsz').value),
-      batch: Number($('autoBatch').value), device: 'cpu',
-      auto_publish: true, station: state.project.station || '',
-    })
-    $('autoTrainState').textContent = '训练中 ' + job.id.slice(0, 8)
-    let detail = job
-    while (!['done', 'failed', 'cancelled'].includes(detail.state)){
-      await new Promise(resolve => setTimeout(resolve, 3000))
-      detail = await api('/api/jobs/' + job.id)
-      $('autoTrainState').textContent = detail.state
-      $('autoTrainLog').textContent = detail.log_tail || ''
-    }
-    if (detail.state !== 'done') throw Error(detail.error || '训练失败')
-    await loadModels()
-    const trained = state.models.find(model => model.job_id === job.id)
-    if (trained?.deployed_station){
-      $('autoTrainState').textContent = '已自动启用'
-      $('autoTrainLog').textContent = '模型 ' + trained.version + ' 已自动发布到工位，检测端下次识别时加载。'
-      toast('模型已自动启用，检测端下次识别时生效')
-    } else {
-      $('autoTrainState').textContent = '训练完成，未启用'
-      $('autoTrainLog').textContent = '模型已生成，但验证或独立测试数据不足，或 mAP50=0，未自动发布。请增加已标注图片后重试。'
-      toast('训练完成但未自动启用：验证或测试数据不足，或指标为 0', true)
-    }
-    await loadAccuracy()
-  } catch(error){
-    $('autoTrainState').textContent = '失败'
-    $('autoTrainLog').textContent = error.message
-    toast(error.message, true)
-  } finally {
-    button.disabled = false
-  }
-}
-
-function pct(value){
-  return value === null || value === undefined ? '—' : (100*value).toFixed(1) + '%'
-}
-
-function renderMetrics(container, model){
-  if (!container) return
-  const metrics = model.metrics || {}
-  const per = metrics.per_class || {}
-  const rows = Object.entries(per).map(([key, value]) =>
-    '<div><span>' + esc(labelOf(key)) + '</span><strong>' + (value.recall != null ? pct(value.recall) : pct(value.ap50)) + '</strong></div>').join('')
-  const test = metrics.test
-  const comparison = test ? '<p>独立测试 · '+(test.evaluation_status === 'unavailable' ? esc(test.reason) : 'mAP50 '+pct(test.map50)+' · '+test.val_images+' 张图 / '+test.instances+' 个缺陷')+'</p>'
-    + Object.entries(test.per_class || {}).map(([key,item])=>'<p>'+esc(labelOf(key))+' · '+(item.support ? '样本 '+item.support+' · 漏检 '+item.missed+' · 背景误报 '+item.false_positive : '未评估')+'</p>').join('') : '<p>此版本未记录独立测试结果</p>'
-  const normal = test?.normal_images != null ? '<p>正常板误报 '+test.normal_false_positive_images+' / '+test.normal_images+' 张（置信度阈值 25%）</p>' : ''
-  const baseline = metrics.baseline_test
-  container.innerHTML = (rows || '<div><span>指标</span><strong>—</strong></div>') + comparison + normal
-    + (baseline ? '<p>同一测试集线上版本 '+esc(metrics.baseline_version)+' · mAP50 '+pct(baseline.map50)+' · 正常板误报 '+(baseline.normal_false_positive_images ?? '—')+' / '+(baseline.normal_images ?? '—')+'</p>'+Object.entries(baseline.per_class || {}).map(([key,item])=>'<p>线上 '+esc(labelOf(key))+' · 漏检 '+(item.missed ?? '—')+' · 背景误报 '+(item.false_positive ?? '—')+'</p>').join('') : '')
-    + (metrics.comparison_reason ? '<p>'+esc(metrics.comparison_reason)+'</p>' : '')
-}
-
-/* ---------------------------------------------------------------- monitor */
-
-async function loadMonitor(){
-  const data = await api('/api/projects/' + state.project.id + '/monitor')
-  const card = $('deploymentCard')
-  const deployment = data.deployment
-  card.innerHTML = (data.deployments || []).map(item=>'<div><h3>'+esc(item.station)+' · 指定版本 '+esc(item.version)+'</h3><p>现场加载 '+(item.loaded_model === item.model_id && !item.load_error ? '已加载指定版本' : item.load_error ? esc(item.load_error) : '等待检测端加载')+' · '+esc(item.loaded_at || '尚无回执')+'</p></div>').join('') || '<p>还没有发布模型。</p>'
-  $('monitorStats').textContent = '反馈 ' + data.feedback_count + ' · 待处理 ' + data.open
-  renderFeedback(data.feedback)
-}
-
-function renderFeedback(items){
-  const list = $('feedbackList')
-  list.replaceChildren()
-  for (const item of items){
-    const row = document.createElement('div')
-    row.className = 'box-row'
-    row.innerHTML = '<span>' + esc(item.predicted || '未填预测') + '</span><small>' + esc(item.note || '') + '</small>'
-      + '<span class="tag ' + (item.state === 'converted' ? 'done' : 'queued') + '">' + (item.state === 'converted' ? '已转标注' : '待处理') + '</span>'
-      + '<button class="quiet" ' + (item.state === 'converted' ? 'disabled' : '') + '>转标注</button>'
-    row.querySelector('button').onclick = async () => {
-      try{ await api('/api/feedback/' + item.id + '/convert', {}); toast('已转为待标注图片'); await loadMonitor() }
-      catch(error){ toast(error.message, true) }
-    }
-    list.append(row)
-  }
-  if (!items.length) list.innerHTML = '<p class="muted">暂无反馈。</p>'
-}
-
-$('feedbackForm').onsubmit = async event => {
-  event.preventDefault()
-  const form = event.target
-  const data = new FormData(form)
-  try{
-    await api('/api/projects/' + state.project.id + '/feedback', data)
-    toast('已加入反馈队列')
-    form.reset()
-    await loadMonitor()
-  } catch(error){ toast(error.message, true) }
-}
-
-/* ------------------------------------------------------------------- boot */
-
-$('tabs').addEventListener('click', event => {
-  const button = event.target.closest('button[data-view]')
-  if (!button) return
-  location.hash = button.dataset.view
+window.addEventListener('resize', () => {
+  drawCanvas();positionSiteDefectPopup()
 })
-window.addEventListener('hashchange', () => switchView(currentView()))
-$('helpBtn').onclick = showHelp
-$('homeHelp').onclick = showHelp
-$('closeHelp').onclick = () => $('helpDialog').close()
-document.querySelectorAll('[data-go]').forEach(button => {
-  button.onclick = () => { location.hash = button.dataset.go }
-})
-$('projectSelect').onchange = event => selectProject(event.target.value)
-$('newProjectBtn').onclick = () => { location.hash = 'projects'; $('projectForm').elements.name.focus() }
-$('projectForm').onsubmit = async event => {
-  event.preventDefault()
-  const form = event.target
-  try{
-    const result = await api('/api/projects', {
-      name: form.elements.name.value, board_model: form.elements.board_model.value,
-      station: form.elements.station.value, note: form.elements.note.value,
-    })
-    form.reset()
-    await loadProjects()
-    await selectProject(result.id)
-    toast('项目已创建')
-  } catch(error){ toast(error.message, true) }
-}
-$('uploadForm').onsubmit = async event => {
-  event.preventDefault()
-  const form = event.target
-  const files = form.elements.files.files
-  if (!files || !files.length) return toast('请选择图片', true)
-  const data = new FormData(form)
-  try{
-    const result = await api('/api/projects/' + state.project.id + '/images', data)
-    localStorage.setItem('pcbPlatformBatch', form.elements.batch.value)
-    localStorage.setItem('pcbPlatformBoard', form.elements.board_serial.value)
-    form.elements.files.value = ''
-    toast('已入库 ' + result.saved.length + ' 张，正在打开框缺陷…')
-    await loadProject(); await loadImages()
-    setTimeout(() => { if (currentView() === 'capture') location.hash = 'label' }, 500)
-  } catch(error){ toast(error.message, true) }
-}
-document.querySelectorAll('[data-img-filter]').forEach(button => button.onclick = () => {
-  state.filter = button.dataset.imgFilter
-  loadImages().catch(error => toast(error.message, true))
-})
-$('datasetTemplate').onchange = () => {
-  const template = state.meta.templates[$('datasetTemplate').value]
-  const form = $('datasetForm')
-  if (template) form.elements.split_policy.focus()
-}
-$('projectSelect').value = ''
 
-;(async () => {
+function leaveAnnotation(){
+  if (state.savingAnnotation) return false
+  if ((state.annotationDirty || state.siteDirty) && !confirm('当前标注或点位模板尚未保存，确定离开并放弃本次修改？')) return false
+  state.annotationDirty = false
+  state.siteDirty=false
+  return true
+}
+
+function loadAnnotationImage(url){
+  return new Promise((resolve,reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(Error('图片加载失败，请重新打开'))
+    image.src = url
+  })
+}
+
+function setViewport(x,y,size){
+  closeSiteDefectPopup()
+  const extent = Math.max(1/24,Math.min(1,size))
+  state.viewport = {x:Math.max(0,Math.min(1-extent,x)),y:Math.max(0,Math.min(1-extent,y)),w:extent,h:extent}
+  state.hoverBox = -1
+  hideHoverInfo()
+}
+
+function zoomDetail(factor, point){
+  if (!state.img || dragStart) return
+  const v = state.viewport
+  const anchor = point || [v.x+v.w/2,v.y+v.h/2]
+  const extent = Math.max(1/24,Math.min(1,v.w/factor))
+  setViewport(anchor[0]-(anchor[0]-v.x)/v.w*extent,anchor[1]-(anchor[1]-v.y)/v.h*extent,extent)
+  drawCanvas()
+}
+
+$('zoomIn').onclick = () => zoomDetail(1.5)
+$('zoomOut').onclick = () => zoomDetail(1/1.5)
+$('resetZoom').onclick = () => { setViewport(0,0,1); drawCanvas() }
+$('labelCanvas').addEventListener('wheel',event => {
+  if (!state.img) return
+  event.preventDefault()
+  zoomDetail(event.deltaY < 0 ? 1.2 : 1/1.2,canvasPoint(event))
+},{passive:false})
+$('labelCanvas').addEventListener('pointercancel',() => {
+  dragStart=null; previewBox=null; dragging=false; drawCanvas()
+})
+$('detailBrightness').oninput = drawCanvas
+$('resetDisplay').onclick = () => {
+  $('detailBrightness').value=100; drawCanvas()
+}
+
+function mapPoint(matrix,point){
+  const [x,y] = point
+  const z = matrix[2][0]*x + matrix[2][1]*y + matrix[2][2]
+  if (Math.abs(z) < 1e-9) return null
+  return [(matrix[0][0]*x+matrix[0][1]*y+matrix[0][2])/z,
+          (matrix[1][0]*x+matrix[1][1]*y+matrix[1][2])/z]
+}
+
+function inverseMatrix(m){
+  const [a,b,c]=m[0], [d,e,f]=m[1], [g,h,i]=m[2]
+  return [[e*i-f*h,c*h-b*i,b*f-c*e],[f*g-d*i,a*i-c*g,c*d-a*f],[d*h-e*g,b*g-a*h,a*e-b*d]]
+}
+
+function rectanglePoints(box){
+  return [[box.x1,box.y1],[box.x2,box.y1],[box.x2,box.y2],[box.x1,box.y2]]
+}
+
+function boundsOf(points){
+  if (!points.length) return null
+  return {x1:Math.min(...points.map(p=>p[0])),y1:Math.min(...points.map(p=>p[1])),
+          x2:Math.max(...points.map(p=>p[0])),y2:Math.max(...points.map(p=>p[1]))}
+}
+
+function displayPolygon(box){
+  const points = box.polygon?.length===4 ? box.polygon : rectanglePoints(box)
+  const projected = points.map(point=>state.alignment ? mapPoint(state.alignment.matrix,point) : point)
+  return projected.some(point=>!point || point.some(value=>!Number.isFinite(value))) ? [] : projected
+}
+
+function boxFromDisplay(rect,key){
+  const points = rectanglePoints({x1:rect[0],y1:rect[1],x2:rect[2],y2:rect[3]})
+  const inverse = state.alignment && inverseMatrix(state.alignment.matrix)
+  const source = points.map(point=>inverse ? mapPoint(inverse,point) : point)
+  if (source.some(point=>!point || point.some(value=>!Number.isFinite(value) || value < -1e-8 || value > 1+1e-8))) return null
+  const polygon = source.map(point=>point.map(value=>Math.max(0,Math.min(1,value))))
+  return {class:key,...boundsOf(polygon),polygon}
+}
+
+function drawOverview(){
+  if (!state.overview) return
+  const canvas = $('overviewCanvas'), image = state.overview
+  const ratio = Math.min(300/image.naturalWidth,380/image.naturalHeight)
+  canvas.width = Math.max(1,Math.round(image.naturalWidth*ratio))
+  canvas.height = Math.max(1,Math.round(image.naturalHeight*ratio))
+  const ctx = canvas.getContext('2d')
+  ctx.drawImage(image,0,0,canvas.width,canvas.height)
+  const v = state.viewport
+  const points = [[v.x,v.y],[v.x+v.w,v.y],[v.x+v.w,v.y+v.h],[v.x,v.y+v.h]]
+  if (points.some(point=>!point)) return
+  ctx.beginPath()
+  points.forEach(([x,y],index) => index ? ctx.lineTo(x*canvas.width,y*canvas.height) : ctx.moveTo(x*canvas.width,y*canvas.height))
+  ctx.closePath(); ctx.strokeStyle='#38bdf8'; ctx.lineWidth=2
+  ctx.fillStyle='#38bdf822'; ctx.fill(); ctx.stroke()
+}
+
+$('overviewCanvas').onclick = event => {
+  if (!state.img || !state.overview) return
+  const rect = $('overviewCanvas').getBoundingClientRect()
+  const point = [(event.clientX-rect.left)/rect.width,(event.clientY-rect.top)/rect.height]
+  const extent = Math.min(state.viewport.w,.25)
+  setViewport(point[0]-extent/2,point[1]-extent/2,extent)
+  drawCanvas()
+}
+
+$('annotator').addEventListener('input',()=>{if(state.image) state.annotationDirty=true})
+
+function sitesReady(){
+  return !!(state.img && state.reference && state.siteTemplate?.reference_id===state.reference.id
+    && (state.image.id===state.reference.id || state.alignment?.reference_id===state.reference.id))
+}
+
+function availableSites(){
+  if (!sitesReady()) return []
+  return state.siteTemplate.sites.filter(site=>boxFromDisplay([site.x1,site.y1,site.x2,site.y2],''))
+}
+
+function siteAt(point){
+  if (!$('showSites').checked && !state.editingSites) return null
+  return availableSites().filter(site=>point[0]>=site.x1 && point[0]<=site.x2 && point[1]>=site.y1 && point[1]<=site.y2)
+    .sort((a,b)=>(a.x2-a.x1)*(a.y2-a.y1)-(b.x2-b.x1)*(b.y2-b.y1))[0] || null
+}
+
+function drawSiteOverlay(ctx,width,height){
+  if (!$('showSites').checked && !state.editingSites) return
+  const v=state.viewport
+  ctx.save()
+  ctx.setLineDash([3,3])
+  for (const site of availableSites()){
+    if (site.x2<v.x || site.x1>v.x+v.w || site.y2<v.y || site.y1>v.y+v.h) continue
+    const selected=site.id===state.selectedSite || state.selectedSites.includes(site.id)
+    const x=(site.x1-v.x)/v.w*width,y=(site.y1-v.y)/v.h*height
+    const w=(site.x2-site.x1)/v.w*width,h=(site.y2-site.y1)/v.h*height
+    ctx.strokeStyle=selected ? '#fbbf24' : '#38bdf8'
+    ctx.lineWidth=selected ? 2.5 : 1
+    ctx.strokeRect(x,y,w,h)
+    if (selected){ctx.fillStyle='#fbbf2422';ctx.fillRect(x,y,w,h)}
+    if (selected || v.w<=.25){
+      ctx.font='11px sans-serif';ctx.fillStyle=selected ? '#fbbf24' : '#e0f2fe'
+      ctx.fillText(site.id,x,Math.max(12,y-3))
+    }
+  }
+  ctx.restore()
+}
+
+function renderSites(){
+  const available=availableSites()
+  const template=state.siteTemplate
+  const locked=!state.img || isProcessed(state.image)
+  state.selectedSites=state.selectedSites.filter(id=>available.some(site=>site.id===id))
+  $('batchSiteDefect').disabled=locked || state.editingSites || !state.selectedSites.length
+  $('batchSiteDefect').textContent='选择缺陷类型'+(state.selectedSites.length ? '（'+state.selectedSites.length+'）' : '')
+  $('clearSiteSelection').disabled=locked || !state.selectedSites.length
+  $('detectSites').disabled=locked || !state.reference
+  $('detectSites').textContent=template ? '应用点位模板' : '自动定位焊点 / 焊脚'
+  $('editSites').disabled=locked || !sitesReady()
+  $('editSites').classList.toggle('active',state.editingSites)
+  $('editSites').textContent=state.editingSites ? '结束补点 / 删点' : '补点 / 删点'
+  $('saveSites').disabled=locked || !state.siteDirty
+  $('siteStatus').textContent=sitesReady()
+    ? available.length+' / '+template.sites.length+' 处可定位'+(state.siteDirty ? ' · 模板待保存' : '')
+      +(state.selectedSites.length ? ' · 已选 '+state.selectedSites.length+' 处' : state.selectedSite ? ' · 选中 '+state.selectedSite : '')
+    : template ? '完成板面对齐后显示点位' : '尚未建立点位模板'
+  $('siteHint').textContent=state.editingSites
+    ? '左键点击空白位置补点或点击已有点位选中，右键点击点位删除；拖框可设置新点位大小。完成后保存点位模板。'
+    : '点击已有缺陷框可修改类型或删除标注；点击或拖框多选点位，再点击“选择缺陷类型”。右键清空选择。'
+  const processed=isProcessed(state.image)
+  const key=[state.imageRequest,state.alignmentRequest,template?.revision,template?.sites.length,state.siteDirty,processed,
+    state.selectedSite,state.selectedSites.join(','),state.editingSites,$('siteSearch').value,available.length].join('|')
+  if (state.siteRenderKey===key) return
+  state.siteRenderKey=key
+  const list=$('siteList'),query=$('siteSearch').value.trim().toLowerCase()
+  list.replaceChildren()
+  const boxBounds=state.boxes.map(box=>boundsOf(displayPolygon(box)))
+  for (const site of available.filter(site=>site.id.toLowerCase().includes(query))){
+    const button=document.createElement('button')
+    const selected=state.selectedSites.includes(site.id) || site.id===state.selectedSite
+    button.className='candidate-row'+(selected ? ' selected' : '')
+    button.type='button'
+    button.dataset.siteId=site.id
+    button.setAttribute('aria-pressed',String(selected))
+    button.textContent=(!processed && !state.editingSites ? selected ? '☑ ' : '☐ ' : '')
+      +site.id+' · '+siteCondition(siteBoxIndex(site,boxBounds))
+    button.onclick=()=>{
+      if (processed) inspectSite(site)
+      else if (state.editingSites){
+        state.selectedSite=site.id;drawCanvas()
+      } else selectAnnotationSite(site)
+    }
+    list.append(button)
+  }
+}
+
+function addTemplateSite(rect){
+  if (!sitesReady()) return
+  state.siteTemplate.sites.push({id:'M'+crypto.randomUUID().slice(0,8),x1:rect[0],y1:rect[1],x2:rect[2],y2:rect[3],origin:'manual'})
+  state.selectedSite=state.siteTemplate.sites.at(-1).id
+  state.siteDirty=true
+}
+
+function sitesInRectangle(rect){
+  return availableSites().filter(site=>{
+    const x=(site.x1+site.x2)/2,y=(site.y1+site.y2)/2
+    return x>=rect[0] && x<=rect[2] && y>=rect[1] && y<=rect[3]
+  })
+}
+
+function removeTemplateSites(ids){
+  if (!state.editingSites || !ids.length) return
+  state.siteTemplate.sites=state.siteTemplate.sites.filter(site=>!ids.includes(site.id))
+  state.selectedSites=state.selectedSites.filter(id=>!ids.includes(id))
+  if (ids.includes(state.selectedSite)) state.selectedSite=null
+  state.siteDirty=true
+  drawCanvas()
+}
+
+function editSiteAt(point){
+  const site=siteAt(point)
+  if (site){state.selectedSite=site.id;drawCanvas();return}
+  const sites=state.siteTemplate.sites
+  const widths=sites.map(site=>site.x2-site.x1).sort((a,b)=>a-b)
+  const heights=sites.map(site=>site.y2-site.y1).sort((a,b)=>a-b)
+  const w=widths[Math.floor(widths.length/2)] || .015,h=heights[Math.floor(heights.length/2)] || .025
+  const rect=[Math.max(0,point[0]-w/2),Math.max(0,point[1]-h/2),Math.min(1,point[0]+w/2),Math.min(1,point[1]+h/2)]
+  if (!boxFromDisplay(rect,'')) return toast('该位置超出原图拍摄范围',true)
+  addTemplateSite(rect)
+  drawCanvas()
+}
+
+function selectAnnotationSite(site){
+  const selected=state.selectedSites.includes(site.id)
+  state.selectedSites=selected ? state.selectedSites.filter(id=>id!==site.id) : [...state.selectedSites,site.id]
+  state.selectedSite=state.selectedSites.at(-1) || null
+  closeSiteDefectPopup();drawCanvas()
+}
+
+$('batchSiteDefect').onclick=()=>{
+  const sites=availableSites().filter(site=>state.selectedSites.includes(site.id))
+  if (sites.length) openSiteDefectPopup(sites.at(-1),sites.map(site=>site.id))
+}
+function clearSiteSelection(){
+  state.selectedSites=[];state.selectedSite=null;state.selected=-1
+  dragStart=null;previewBox=null;dragging=false
+  closeSiteDefectPopup();drawCanvas()
+}
+$('clearSiteSelection').onclick=clearSiteSelection
+document.querySelector('.label-layout').addEventListener('contextmenu',event=>{
+  event.preventDefault()
+  if (state.savingAnnotation || isProcessed(state.image)) return
+  if (state.editingSites){
+    const row=event.target.closest('#siteList [data-site-id]')
+    const site=event.target===$('labelCanvas') ? siteAt(canvasPoint(event))
+      : row ? availableSites().find(item=>item.id===row.dataset.siteId) : null
+    if (site){removeTemplateSites([site.id]);return}
+  }
+  clearSiteSelection()
+})
+
+async function persistSites(){
+  const template=state.siteTemplate
+  const saved=await api('/api/projects/'+state.project.id+'/solder-template',{
+    action:'save',reference_id:template.reference_id,revision:template.revision,sites:template.sites,
+  })
+  state.siteTemplate=saved;state.siteDirty=false
+  renderSites()
+}
+
+$('detectSites').onclick=async()=>{
+  if (!state.img || isProcessed(state.image) || !state.reference || state.savingAnnotation) return
+  const pid=state.project.id,reference=state.reference.id
+  if (state.image.id!==reference && state.alignment?.reference_id!==reference)
+    return toast('请先完成与当前标准图的板面对齐，再应用点位模板',true)
+  const endpoint='/api/projects/'+pid+'/solder-template'
+  const applying=!!state.siteTemplate
+  state.savingAnnotation=true;$('annotationWorkspace').inert=true
+  $('siteStatus').textContent=applying ? '正在读取点位模板…' : '正在标准图上定位焊点 / 焊脚…'
   try{
-    state.meta = await api('/api/meta')
-    fillStaticSelects()
-    await loadProjects()
-    const saved = localStorage.getItem('pcbPlatformProject')
-    const selected = state.projects.find(project => project.id === saved) || state.projects[0]
-    if (selected) await selectProject(selected.id)
-    const view = currentView()
-    if (!['home','projects','capture','label','review','accuracy','datasets','train','models','monitor'].includes(view)) location.hash = 'home'
-    else switchView(view)
-    if (!localStorage.getItem('pcbPlatformHelpSeen')) setTimeout(showHelp, 800)
-  } catch(error){ toast(error.message, true) }
+    const template=applying ? await api(endpoint) : await api(endpoint,{
+      action:'detect',reference_id:reference,revision:0,
+    })
+    if (!template || template.reference_id!==reference){
+      return toast('标准图或模板已变化，请重新打开图片',true)
+    }
+    if (applying){
+      const previousBoxCount=state.boxes.length
+      const sites=[...state.siteTemplate.sites,...template.sites]
+      state.boxes=state.boxes.filter(box=>{
+        const bounds=boundsOf(displayPolygon(box))
+        return !sites.some(site=>siteOverlap(site,bounds)>=.5)
+      })
+      if (state.boxes.length!==previousBoxCount) state.annotationDirty=true
+      state.siteDirty=false
+      state.editingSites=false
+      state.selectedSites=[]
+      state.selectedSite=null
+      state.selected=-1
+      state.hoverBox=-1
+      hideHoverInfo()
+      closeSiteDefectPopup()
+      $('siteSearch').value=''
+    }
+    state.siteTemplate=template
+    state.siteRenderKey=null
+    $('showSites').checked=true
+    drawCanvas()
+    const count=availableSites().length
+    if (!count) return toast(template.sites.length ? '模板点位均在当前图片范围外' : '模板中没有点位',true)
+    toast(applying ? '已按模板重置点位，当前显示 '+count+' 处' : '已显示 '+count+' 个模板点位')
+  }catch(error){toast(error.message,true)}
+  finally{state.savingAnnotation=false;$('annotationWorkspace').inert=false;renderSites()}
+}
+$('editSites').onclick=()=>{
+  if (!sitesReady()) return
+  closeSiteDefectPopup()
+  state.editingSites=!state.editingSites
+  state.selectedSites=[];state.selectedSite=null;state.selected=-1
+  if (state.editingSites) $('showSites').checked=true
+  dragStart=null;previewBox=null
+  drawCanvas()
+}
+$('saveSites').onclick=async()=>{
+  if (!state.siteDirty || state.savingAnnotation) return
+  state.savingAnnotation=true;$('annotationWorkspace').inert=true
+  try{await persistSites();toast('点位模板已保存，同板型校正图片会自动使用')}
+  catch(error){toast(error.message,true)}
+  finally{state.savingAnnotation=false;$('annotationWorkspace').inert=false;drawCanvas()}
+}
+$('showSites').onchange=drawCanvas
+$('siteSearch').oninput=renderSites
+function siteCondition(index){
+  const key=state.boxes[index]?.class
+  return !key || key==='good_solder' ? '正常' : '缺陷 · '+labelOf(key)
+}
+
+function inspectSite(site){
+  const extent=Math.min(.25,state.viewport.w)
+  setViewport((site.x1+site.x2-extent)/2,(site.y1+site.y2-extent)/2,extent)
+  state.selectedSite=site.id
+  state.selected=siteBoxIndex(site)
+  drawCanvas()
+  toast(site.id+' · '+siteCondition(state.selected))
+}
+
+function siteOverlap(site,bounds){
+  if (!bounds) return 0
+  const intersection=Math.max(0,Math.min(bounds.x2,site.x2)-Math.max(bounds.x1,site.x1))
+    *Math.max(0,Math.min(bounds.y2,site.y2)-Math.max(bounds.y1,site.y1))
+  const union=(bounds.x2-bounds.x1)*(bounds.y2-bounds.y1)+(site.x2-site.x1)*(site.y2-site.y1)-intersection
+  return union>0 ? intersection/union : 0
+}
+
+function siteBoxIndex(site,boxBounds=state.boxes.map(box=>boundsOf(displayPolygon(box)))){
+  let best=-1,bestOverlap=.5
+  boxBounds.forEach((bounds,index)=>{
+    const overlap=siteOverlap(site,bounds)
+    if (overlap>=bestOverlap){best=index;bestOverlap=overlap}
+  })
+  return best
+}
+
+function closeSiteDefectPopup(){
+  state.sitePopup=null
+  $('siteDefectPopup').hidden=true
+}
+
+function openSiteDefectPopup(site,siteIds=[site.id]){
+  const sites=availableSites().filter(item=>siteIds.includes(item.id))
+  if (state.editingSites || state.savingAnnotation || !sites.length) return
+  state.selectedSite=site.id
+  state.selected=siteBoxIndex(site)
+  drawCanvas()
+  const classes=sites.map(item=>state.boxes[siteBoxIndex(item)]?.class)
+  const current=classes.every(key=>key===classes[0]) ? classes[0] : null
+  state.sitePopup={siteIds:sites.map(item=>item.id),anchorSiteId:site.id,imageId:state.image.id}
+  renderDefectPopup((sites.length>1 ? '已选 '+sites.length+' 个点位' : site.id)+' · 选择缺陷类型',
+    current,sites.some(item=>siteBoxIndex(item)>=0),sites.length>1 ? '删除所选点位标注' : '删除该点位标注')
+}
+
+function openBoxDefectPopup(index){
+  const box=state.boxes[index]
+  if (!box || state.editingSites || state.savingAnnotation) return
+  const anchor=boundsOf(displayPolygon(box))
+  if (!anchor) return
+  state.selected=index
+  state.sitePopup={boxIndices:[index],anchor,imageId:state.image.id}
+  drawCanvas()
+  renderDefectPopup('修改缺陷标注',box.class,true,'删除该缺陷标注')
+}
+
+function renderDefectPopup(heading,current,canRemove,removeText){
+  const popup=$('siteDefectPopup')
+  popup.replaceChildren()
+  const title=document.createElement('strong')
+  title.textContent=heading
+  popup.append(title)
+  for (const type of state.meta.det_classes){
+    const button=document.createElement('button')
+    button.type='button'
+    button.dataset.class=type.key
+    button.textContent=type.label
+    button.classList.toggle('current',type.key===current)
+    button.onclick=()=>applySiteDefect(type.key)
+    popup.append(button)
+  }
+  if (canRemove){
+    const remove=document.createElement('button')
+    remove.type='button';remove.className='remove';remove.textContent=removeText
+    remove.onclick=()=>applySiteDefect(null)
+    popup.append(remove)
+  }
+  const close=document.createElement('button')
+  close.type='button';close.className='close';close.textContent='取消'
+  close.onclick=()=>{closeSiteDefectPopup();$('labelCanvas').focus({preventScroll:true})}
+  popup.append(close)
+  hideHoverInfo()
+  popup.hidden=false
+  positionSiteDefectPopup()
+  popup.scrollIntoView({block:'nearest',inline:'nearest'})
+  const initialButton=popup.querySelector('button.current') || popup.querySelector('button')
+  initialButton?.focus({preventScroll:true})
+}
+
+function positionSiteDefectPopup(){
+  const popup=$('siteDefectPopup')
+  if (!state.sitePopup || popup.hidden) return
+  const site=state.sitePopup.anchor || availableSites().find(item=>item.id===state.sitePopup.anchorSiteId)
+  if (!site) return closeSiteDefectPopup()
+  const canvasRect=$('labelCanvas').getBoundingClientRect(),wrapRect=popup.parentElement.getBoundingClientRect()
+  const v=state.viewport
+  const x=canvasRect.left-wrapRect.left+((site.x1+site.x2)/2-v.x)/v.w*canvasRect.width
+  const y=canvasRect.top-wrapRect.top+((site.y1+site.y2)/2-v.y)/v.h*canvasRect.height
+  popup.style.left=Math.max(8,Math.min(x+12,wrapRect.width-popup.offsetWidth-8))+'px'
+  popup.style.top=Math.max(8,Math.min(y+12,wrapRect.height-popup.offsetHeight-8))+'px'
+}
+
+function applySiteDefect(key){
+  const target=state.sitePopup
+  if (!target || target.imageId!==state.image?.id || state.savingAnnotation) return closeSiteDefectPopup()
+  state.siteRenderKey=null
+  if (target.boxIndices){
+    if (key!==null && !state.meta.det_classes.some(type=>type.key===key)) return
+    for (const index of [...target.boxIndices].sort((a,b)=>b-a)){
+      if (!state.boxes[index]) continue
+      if (key===null){
+        state.boxes.splice(index,1);state.annotationDirty=true
+      } else if (state.boxes[index].class!==key){
+        state.boxes[index].class=key;state.annotationDirty=true
+      }
+    }
+    state.selected=-1
+    closeSiteDefectPopup();drawCanvas()
+    $('labelCanvas').focus({preventScroll:true})
+    return
+  }
+  const sites=availableSites().filter(item=>target.siteIds.includes(item.id))
+  if (sites.length!==target.siteIds.length) return closeSiteDefectPopup()
+  if (key===null){
+    const indices=[...new Set(sites.map(site=>siteBoxIndex(site)).filter(index=>index>=0))].sort((a,b)=>b-a)
+    for (const index of indices) state.boxes.splice(index,1)
+    if (indices.length) state.annotationDirty=true
+    state.selected=-1
+  } else {
+    if (!state.meta.det_classes.some(type=>type.key===key)) return
+    const updates=sites.map(site=>({existing:siteBoxIndex(site),box:boxFromDisplay([site.x1,site.y1,site.x2,site.y2],key)}))
+    if (updates.some(update=>!update.box)) return toast('所选点位超出当前图片拍摄范围',true)
+    for (const {existing,box} of updates){
+      if (existing>=0){
+        if (state.boxes[existing].class!==key) state.annotationDirty=true
+        state.boxes[existing].class=key
+        state.selected=existing
+      } else {
+        state.boxes.push(box);state.selected=state.boxes.length-1;state.annotationDirty=true
+      }
+    }
+  }
+  closeSiteDefectPopup()
+  drawCanvas()
+  $('labelCanvas').focus({preventScroll:true})
+}
+
+document.addEventListener('pointerdown',event=>{
+  if (!event.target.closest('#siteDefectPopup')) closeSiteDefectPopup()
+})
+document.addEventListener('keydown',event=>{
+  if (event.key==='Escape' && state.sitePopup){
+    closeSiteDefectPopup();$('labelCanvas').focus({preventScroll:true});event.preventDefault()
+  }
+})
+window.addEventListener('beforeunload',event=>{
+  if (state.annotationDirty || state.siteDirty){event.preventDefault();event.returnValue=''}
+})
+
+function renderModelUpdate(data){
+  const model=data.latest_model
+  $('latestModelLabel').title=''
+  $('latestModelLabel').textContent=model ? '最新模型 '+model.version : '尚未生成模型'
+  renderModelTestNotice(data.testing)
+}
+
+async function loadModelUpdate(){
+  if (!state.project || state.modelLoading) return
+  state.modelLoading=true
+  try{
+    renderModelUpdate(await api('/api/projects/'+state.project.id+'/model-update'))
+  } finally {state.modelLoading=false}
+}
+
+async function finishUpload(data){
+  const result=await api('/api/projects/'+state.project.id+'/images',data)
+  await loadProject()
+  await loadModelUpdate()
+  toast('已上传 '+result.saved.length+' 张，请保存缺陷标注')
+  state.filter='all'
+  await loadLabelImages(false)
+  await openImage(result.saved[0])
+  $('annotationEditor').scrollIntoView({block:'start',behavior:'smooth'})
+}
+
+$('uploadForm').onsubmit=async event=>{
+  event.preventDefault()
+  const form=event.target
+  if (!form.elements.files.files.length) return toast('请选择图片',true)
+  if (!leaveAnnotation()) return
+  const button=form.querySelector('button[type=submit],button.primary')
+  button.disabled=true
+  try{
+    await finishUpload(new FormData(form))
+    form.elements.files.value=''
+  }catch(error){toast(error.message,true)}
+  finally{button.disabled=false}
+}
+
+function stopCamera(){
+  state.cameraStream?.getTracks().forEach(track=>track.stop())
+  state.cameraStream=null
+  $('captureVideo').srcObject=null
+  $('takePhoto').disabled=true
+}
+
+$('openCamera').onclick=async()=>{
+  $('cameraStatus').textContent='正在打开摄像头…'
+  $('cameraDialog').showModal()
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false})
+    if (!$('cameraDialog').open){stream.getTracks().forEach(track=>track.stop());return}
+    state.cameraStream=stream
+    $('captureVideo').srcObject=stream
+    await $('captureVideo').play()
+    if (!$('cameraDialog').open) return
+    $('takePhoto').disabled=false
+    $('cameraStatus').textContent='将整块板放入画面并对焦后拍照'
+  }catch(error){
+    stopCamera()
+    $('cameraStatus').textContent='摄像头打开失败，请检查摄像头权限或选择图片上传'
+  }
+}
+$('closeCamera').onclick=()=>{$('cameraDialog').close()}
+$('cameraDialog').addEventListener('close',stopCamera)
+$('takePhoto').onclick=async()=>{
+  const video=$('captureVideo')
+  if (!video.videoWidth || !video.videoHeight || !leaveAnnotation()) return
+  $('takePhoto').disabled=true
+  try{
+    const canvas=document.createElement('canvas')
+    canvas.width=video.videoWidth;canvas.height=video.videoHeight
+    canvas.getContext('2d').drawImage(video,0,0)
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.94))
+    if (!blob) throw Error('拍照失败，请重试')
+    const data=new FormData($('uploadForm'))
+    data.delete('files')
+    data.append('files',blob,'拍照-'+Date.now()+'.jpg')
+    await finishUpload(data)
+    $('cameraDialog').close()
+  }catch(error){toast(error.message,true);$('takePhoto').disabled=false}
+}
+
+document.querySelectorAll('[data-img-filter]').forEach(button=>{
+  button.onclick=async()=>{
+    if (!leaveAnnotation()) return
+    state.filter=button.dataset.imgFilter
+    try{await loadLabelImages()}catch(error){toast(error.message,true)}
+  }
+})
+
+;(async()=>{
+  try{
+    state.meta=await api('/api/meta')
+    const projects=await api('/api/projects')
+    const saved=localStorage.getItem('pcbPlatformProject')
+    let project=projects.find(item=>item.id===saved) || projects[0]
+    if (!project) project=await api('/api/projects',{name:'PCB焊点标注',station:'默认工位'})
+    state.project=await api('/api/projects/'+project.id)
+    localStorage.setItem('pcbPlatformProject',project.id)
+    if (location.hash) history.replaceState(null,'',location.pathname+location.search)
+    setInterval(()=>loadModelUpdate().catch(()=>{
+      $('latestModelLabel').title='模型信息暂时无法刷新'
+    }),3000)
+    await refreshWorkspace()
+  }catch(error){toast(error.message,true)}
 })()
