@@ -1,0 +1,6 @@
+ultralytics==8.4.208
+albumentations==2.0.8
+Flask>=3.1,<4
+waitress>=3,<4
+reportlab>=4,<6
+PyYAML>=6

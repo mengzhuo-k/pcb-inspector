@@ -1,0 +1,12 @@
+# CPU-only stack for the 8-core / 32 GB ModelScope instance.
+# torch is installed from the CPU wheel index by train_all.sh before this file,
+# so ultralytics does not pull a multi-gigabyte CUDA build.
+ultralytics==8.4.208
+numpy>=1.26
+pillow>=10.0
+opencv-python-headless>=4.9
+pyyaml>=6.0
+requests>=2.31
+reportlab>=4.0
+flask>=3.0
+waitress>=3.0

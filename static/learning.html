@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>焊视 · 漏接模型训练</title><link rel="stylesheet" href="./static/learning.css?v=2">
+<header><strong>焊视</strong><span>PCB 漏接训练平台</span><a href="http://127.0.0.1:8765/">检测工作台 ↗</a></header>
+<main><h1>模型训练</h1><p>上传同板型照片，按样本类型生成标注。新样本就绪后自动从上一版权重继续训练。</p>
+<section><h2>添加样本</h2>
+<div class="controls"><label>样本类型<select id="mode"><option value="normal">正常板 · 无漏接</option><option value="same">与缺陷样板相同 · 全部 26 处漏接</option><option value="partial">部分漏接 · 选择孔位或画框</option></select></label>
+<label>样本用途<select id="split"><option value="train">参与训练</option><option value="val">独立验证 · 使用另一块实体板</option></select></label></div>
+<label class="drop" id="drop" tabindex="0"><input type="file" id="file" multiple accept="image/*"><strong>选择图片或拖入这里</strong><span>可批量上传，每张最多 16 MB</span></label>
+<p id="hint"></p><output id="msg" aria-live="polite"></output></section>
+<section><div class="heading"><h2>训练版本</h2><span id="trainingState"></span></div><div id="versions"></div></section>
+<section><div class="heading"><h2>整板缺陷识别</h2><span id="classifierState"></span></div><div id="classifier"></div></section>
+<section><div class="heading"><h2>样本库</h2><span id="count"></span></div><div id="samples"></div></section></main>
+<dialog id="editor"><div class="heading"><h2 id="sampleName"></h2><button id="close">关闭</button></div><p>点击虚线框选择漏接位置，点击实线框移除。拖动空白处可以补画缺陷框。</p><svg id="canvas" aria-label="缺陷标注画布"></svg>
+<div class="heading"><span id="boxCount"></span><button id="save">保存标注并加入队列</button></div><output id="editMsg"></output></dialog>
+<script src="./static/learning.js?v=2"></script></html>
