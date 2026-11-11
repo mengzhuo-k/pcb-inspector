@@ -2,6 +2,7 @@ let activeBatchId = localStorage.getItem('pcbActiveBatch') || ''
 let activeBatch = null, galleryFilter = 'all', pollTimer, batchUploading = false
 let reviewIds = []
 let workspaceBatches = [], rejectedItems = [], processFilter = 'active'
+let batchDetailRequest=0
 
 async function batchApi(path, payload) {
   const response = await fetch(path, {
@@ -30,19 +31,32 @@ async function loadBatchList(openActive = true) {
 
 async function openBatch(id) {
   clearTimeout(pollTimer)
+  const request=++batchDetailRequest
   activeBatchId = id
   localStorage.setItem('pcbActiveBatch',id)
   const batch = await api('/api/batches/'+id)
-  if (activeBatchId !== id) return
+  if (activeBatchId !== id || request!==batchDetailRequest) return
   const phaseChanged = ['ready','reviewing','completed'].includes(batch.state) && (activeBatch?.id !== id || activeBatch?.state !== batch.state)
   activeBatch = batch
   $('batchDetailName').textContent = batch.name+' · '+batch.station
   renderBatch(batch)
   if (phaseChanged) refresh().catch(err=>message(err.message))
   if (phaseChanged) refreshWorkspace().catch(err=>message(err.message))
-  if (['importing','running'].includes(batch.state)) {
-    pollTimer = setTimeout(()=>openBatch(id).catch(err=>message(err.message)),2000)
+  if (['importing','running','ready','reviewing'].includes(batch.state)) {
+    scheduleBatchPoll(id)
   }
+}
+
+function scheduleBatchPoll(id){
+  const request=batchDetailRequest
+  pollTimer=setTimeout(async()=>{
+    if(activeBatchId!==id || request!==batchDetailRequest || currentPage!=='batch') return
+    if(document.hidden){scheduleBatchPoll(id);return}
+    try{await openBatch(id)}catch(error){
+      message(error.message)
+      if(activeBatchId===id && batchDetailRequest===request+1 && !error.message.includes('不存在')) scheduleBatchPoll(id)
+    }
+  },2000)
 }
 
 function renderBatch(batch) {
@@ -104,7 +118,14 @@ function imageDefectSummary(item){
   const count=known ? summary.abnormal_sites+(Number.isInteger(summary.checked_sites) ? ' / '+summary.checked_sites : '') : summary.defects?.length ? '未定位' : '未记录'
   const defects=(summary.defects || []).map(defect=>esc(defect.label)+' '+defect.count+' '+(defect.point_based ? '处' : '项')).join(' · ')
   const extra=known && summary.unlocated_count ? '<span>另有 '+summary.unlocated_count+' 项未定位缺陷</span>' : ''
-  return '<div class="image-defect-summary'+(summary.defects?.length ? ' has-defects' : '')+'"><b>异常点位：'+count+'</b><span>缺陷：'+(defects || '未检出定位缺陷')+'</span>'+extra+'</div>'
+  return '<div class="image-defect-summary'+(item.signed ? ' machine-history' : summary.defects?.length ? ' has-defects' : '')+'"><b>'+(item.signed ? '机器检出异常点位：' : '异常点位：')+count+'</b><span>'+(item.signed ? '机器检出缺陷：' : '缺陷：')+(defects || '未检出定位缺陷')+'</span>'+extra+'</div>'
+}
+
+function imageReviewSummary(item){
+  if(item.state!=='done' || !item.signed) return ''
+  const types=item.manual?.length ? '<span>复核补标缺陷：'+item.manual.map(esc).join('、')+'</span>' : ''
+  const comment=item.comment ? '<span>复核意见：'+esc(item.comment)+'</span>' : ''
+  return '<div class="image-review-summary" data-state="'+esc(item.decision)+'"><b>复核结论：'+esc(item.decision)+'</b><span>签字：'+esc(item.reviewer)+' · '+esc(date(item.signed))+'</span>'+types+comment+'</div>'
 }
 
 function renderGallery() {
@@ -125,7 +146,7 @@ function renderGallery() {
       ? ' · 整板 '+esc(item.classification.label)+' '+Math.round(item.classification.score*100)+'%'
       : (item.classification ? ' · 整板未见明显缺陷' : '')
     const correction=item.state==='done' ? ' · '+(item.alignment ? '板面已矫正' : '未记录矫正')+(item.inspection ? ' · 模板 v'+item.inspection.template_revision : ' · 未记录点位模板') : ''
-    card.innerHTML='<div class="thumbnail">'+preview+sampleBadge+'</div><div class="image-info"><strong title="'+esc(item.filename)+'">#'+String(item.ordinal+1).padStart(3,'0')+' · '+esc(item.filename)+'</strong><span class="tag" data-state="'+esc(state)+'">'+esc(state)+'</span>'+imageDefectSummary(item)+'<small>'+ (item.state === 'done' ? '机器初判 '+esc(item.auto_decision)+identification+correction+' · '+(item.signed ? '已复查' : item.sampled ? '抽样待复查' : item.decision === '不合格' ? '异常待复查' : '自动检测') : esc(item.error || ''))+'</small></div>'
+    card.innerHTML='<div class="thumbnail">'+preview+sampleBadge+'</div><div class="image-info"><strong title="'+esc(item.filename)+'">#'+String(item.ordinal+1).padStart(3,'0')+' · '+esc(item.filename)+'</strong><span class="tag" data-state="'+esc(state)+'">'+esc(state)+'</span>'+imageReviewSummary(item)+imageDefectSummary(item)+'<small>'+ (item.state === 'done' ? '机器初判 '+esc(item.auto_decision)+identification+correction+' · '+(item.signed ? '已复核，以复核结论为准' : item.sampled ? '抽样待复查' : item.decision === '不合格' ? '异常待复查' : '自动检测') : esc(item.error || ''))+'</small></div>'
     card.onclick=()=>item.record_id ? inspectStoredRecord(item.record_id,'batch',items.filter(entry=>entry.state==='done').map(entry=>entry.record_id)) : inspectBatchImage(activeBatch,item)
     fragment.append(card)
   }

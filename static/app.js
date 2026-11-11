@@ -392,11 +392,11 @@ function present(r) {
     localStorage.setItem('pcbReviewer',e.target.elements.reviewer.value.trim())
     btn.disabled = true
     try {
-      present(await api('/api/records/'+r.id+'/review',new FormData(e.target)))
-      await refresh()
-      if (r.batch_id) await openBatch(r.batch_id)
-      await refreshWorkspace()
-      message('复核已保存，检验结果已更新。')
+      const updated=await api('/api/records/'+r.id+'/review',new FormData(e.target))
+      if(activeStoredRecord?.record.id===updated.id) activeStoredRecord.record=updated
+      present(updated)
+      const updates=await Promise.allSettled([refresh(),refreshWorkspace(),...(updated.batch_id ? [openBatch(updated.batch_id)] : [])])
+      message(updates.some(result=>result.status==='rejected') ? '复核已保存，部分列表暂时未能刷新，请重新打开批次查看。' : '复核已保存，检测任务中的图片结论、签字信息和批次统计已同步更新。')
     }
     catch(err){message(err.message)} finally {btn.disabled=false}
   }

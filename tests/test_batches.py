@@ -132,6 +132,38 @@ class BatchTests(unittest.TestCase):
         self.assertEqual(summary['defects'][0]['count'],2)
         self.assertFalse(summary['defects'][0]['point_based'])
 
+    def test_review_changes_sync_image_metadata_and_batch_counts_in_both_directions(self):
+        bid=self.create_batch(1)
+        self.upload(bid,0,red=True)
+        self.client.post(f'/api/batches/{bid}/start')
+        before=self.wait_ready(bid)
+        original=before['items'][0]['defect_summary']
+        rid=before['items'][0]['record_id']
+        reviewed=self.client.post(f'/api/records/{rid}/review',data={
+            'decision':'合格','reviewer':'QA甲','revision':0,'comment':'确认可接受'})
+        self.assertEqual(reviewed.status_code,200,reviewed.json)
+        passed=self.client.get(f'/api/batches/{bid}').json
+        item=passed['items'][0]
+        self.assertEqual(item['decision'],'合格')
+        self.assertEqual(item['auto_decision'],'不合格')
+        self.assertEqual(item['reviewer'],'QA甲')
+        self.assertEqual(item['comment'],'确认可接受')
+        self.assertTrue(item['signed'])
+        self.assertEqual(item['manual'],[])
+        self.assertEqual(item['defect_summary'],original)
+        self.assertEqual((passed['summary']['passed'],passed['summary']['rejected'],passed['summary']['rate']),(1,0,100))
+        self.assertEqual(passed['summary']['auto_rate'],0)
+        reviewed=self.client.post(f'/api/records/{rid}/review',data={
+            'decision':'不合格','reviewer':'QA乙','revision':1,'manual':'冷焊','comment':'补充确认冷焊'})
+        self.assertEqual(reviewed.status_code,200,reviewed.json)
+        rejected=self.client.get(f'/api/batches/{bid}').json
+        item=rejected['items'][0]
+        self.assertEqual((item['decision'],item['reviewer'],item['manual'],item['revision']),('不合格','QA乙',['冷焊'],2))
+        self.assertEqual(item['defect_summary'],original)
+        self.assertEqual((rejected['summary']['passed'],rejected['summary']['rejected'],rejected['summary']['rate']),(0,1,0))
+        listed=next(batch for batch in self.client.get('/api/batches').json if batch['id']==bid)
+        self.assertEqual((listed['passed'],listed['rejected'],listed['reviewed']),(0,1,1))
+
     def test_batch_process_parameters_flow_into_analysis_and_report(self):
         batch=self.client.post("/api/batches",json={"station":"PROCESS-BATCH","name":"Process check",
             "filenames":["board.png"],"temp":244,"reflow_seconds":54,"solder_batch":"SP-BATCH"}).json

@@ -825,7 +825,7 @@ def batch_detail(bid):
         batch = conn.execute("SELECT * FROM batches WHERE id=?", (bid,)).fetchone()
         rows = conn.execute("""SELECT i.ordinal,i.filename,i.state,i.error,i.record_id,i.sampled,
             i.sample_revision,(i.image IS NOT NULL) AS retryable,r.decision,r.auto_decision,r.signed,r.reviewer,r.revision,r.model_version,
-            r.classification,r.alignment,r.inspection,r.boxes AS detection_boxes,json_array_length(r.boxes) AS count
+            r.classification,r.alignment,r.inspection,r.manual,r.comment,r.boxes AS detection_boxes,json_array_length(r.boxes) AS count
             FROM batch_items i LEFT JOIN records r ON i.record_id=r.id
             WHERE i.batch_id=? ORDER BY i.ordinal""", (bid,)).fetchall()
     if not batch:
@@ -837,6 +837,7 @@ def batch_detail(bid):
         item["classification"] = json.loads(item["classification"]) if item["classification"] else None
         item["alignment"] = json.loads(item["alignment"]) if item["alignment"] else None
         item["inspection"] = json.loads(item["inspection"]) if item["inspection"] else None
+        item['manual']=json.loads(item['manual']) if item['manual'] else []
         boxes=json.loads(item.pop('detection_boxes') or '[]')
         item['defect_summary']=summarize_point_defects(boxes,item['inspection']) if item['state']=='done' else None
         items.append(item)
