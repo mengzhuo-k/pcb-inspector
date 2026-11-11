@@ -110,6 +110,15 @@ class ModelRuntime:
             result = active["model"].predict(image, **kwargs)[0]
             return result, active["label"], active["sha256"]
 
+    def predict_many(self, images, **kwargs):
+        self.refresh()
+        with self.lock:
+            active = self.active
+            results = []
+            for image in images:
+                results.append(active["model"].predict(image, **kwargs)[0])
+            return results, active["label"], active["sha256"]
+
     def status(self):
         with self.lock:
             info = {key:value for key,value in self.active.items() if key != "model"}
@@ -212,17 +221,34 @@ class PlatformRuntime:
 
     def alignment_reference(self, station):
         row = self._published(station)
-        if row is None:
+        if not self.database.is_file():
             return None
         with closing(sqlite3.connect(self.database, timeout=5)) as conn:
             conn.row_factory = sqlite3.Row
+            conn.execute("BEGIN")
+            if row is None:
+                candidates = conn.execute("SELECT id AS project_id FROM projects WHERE station=?", (station,)).fetchall()
+                if not candidates:
+                    candidates = conn.execute("SELECT id AS project_id FROM projects").fetchall()
+                if len(candidates) != 1:
+                    if candidates:
+                        raise ValueError("请为当前工位指定唯一的训练项目后再使用点位模板")
+                    return None
+                row = candidates[0]
             reference = conn.execute("""SELECT s.image_id AS id,s.path FROM alignment_sources s
                 JOIN alignment_references r ON r.project_id=s.project_id AND r.image_id=s.image_id
                 WHERE s.project_id=?""", (row["project_id"],)).fetchone()
             if reference is None:
                 reference = conn.execute("""SELECT i.id,i.path FROM images i JOIN alignment_references r
                     ON r.image_id=i.id WHERE r.project_id=?""", (row["project_id"],)).fetchone()
-            return dict(reference) if reference else None
+            if reference is None:
+                return None
+            result = dict(reference, project_id=row["project_id"])
+            template = conn.execute("""SELECT reference_id,revision,sites FROM solder_templates
+                WHERE project_id=? AND reference_id=?""", (row["project_id"], reference["id"])).fetchone()
+            if template:
+                result.update(template_revision=template["revision"],sites=json_loads(template["sites"]))
+            return result
 
     def policy(self, station):
         default = dict(required_classes=["missing_connection", "poor_solder_virtual",
@@ -267,6 +293,19 @@ class PlatformRuntime:
                     or test_status not in ("valid", "partial") or not metrics.get("map50")):
                 result.pcb_issues.append("新模型缺少有效的检测验证或独立测试结果，请人工复核")
             return result, active["version"], active["sha256"]
+
+    def predict_many(self, images, station="", project_id=None, **kwargs):
+        # Hold the same model through all regions so a model update cannot mix versions.
+        with self.lock:
+            first,version,digest = self.predict(images[0],station=station,project_id=project_id,**kwargs)
+            active = self.models[(project_id,station)]
+            kwargs.setdefault("conf", active["threshold"])
+            results = [first]
+            for image in images[1:]:
+                result = active["model"].predict(image,**kwargs)[0]
+                result.pcb_issues = list(getattr(first,"pcb_issues",[]))
+                results.append(result)
+            return results,version,digest
 
     def status(self, station="", project_id=None):
         self.refresh(station, project_id)

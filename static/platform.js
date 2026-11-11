@@ -4,7 +4,7 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;',
 const COLORS = ['#38bdf8','#f59e0b','#a78bfa','#f87171','#4ade80','#22d3ee','#fb7185','#facc15']
 const state = {
   meta:null, project:null, images:[], image:null, boxes:[], selected:-1,
-  filter:'all', img:null, modelLoading:false, cameraStream:null,
+  filter:'all', img:null, modelLoading:false, imageLimit:200, listLoading:false, listRequest:0,
   hoverBox:-1,
   viewport:{x:0,y:0,w:1,h:1}, reference:null, alignment:null, overview:null,
   annotationDirty:false, imageRequest:0, alignmentRequest:0,
@@ -98,10 +98,23 @@ $('deleteTrainingImage').onclick = () => {
 /* --------------------------------------------------------------- labeling */
 
 async function loadLabelImages(openCurrent=true){
-  const query=new URLSearchParams({limit:'300'})
+  const requestId=++state.listRequest
+  state.listLoading=true
+  const query=new URLSearchParams({limit:'200'})
   if (state.filter==='new') query.set('processing','unprocessed')
   else if (state.filter==='approved') query.set('processing','processed')
-  state.images=await api('/api/projects/'+state.project.id+'/images?'+query)
+  const images=[]
+  try{
+    while (images.length<state.imageLimit){
+      query.set('offset',String(images.length))
+      const page=await api('/api/projects/'+state.project.id+'/images?'+query)
+      images.push(...page)
+      if (page.length<200) break
+    }
+    if (requestId!==state.listRequest) return
+    state.images=images
+  }finally{if(requestId===state.listRequest) state.listLoading=false}
+  $('loadMoreImages').hidden=images.length<state.imageLimit
   document.querySelectorAll('[data-img-filter]').forEach(button=>button.classList.toggle('active',button.dataset.imgFilter===state.filter))
   const list = $('labelList')
   list.replaceChildren()
@@ -113,15 +126,31 @@ async function loadLabelImages(openCurrent=true){
     row.innerHTML = '<img loading="lazy" src="' + base + '/api/images/' + image.id + '/file?v=' + image.revision + '&w=160" alt="">'
       + '<div><strong>' + esc(image.filename) + '</strong><small>' + (processed ? '已处理' : '未处理') + ' · '
       + (image.label_count || 0) + ' 框</small></div>'
+    row.tabIndex=0
+    row.setAttribute('role','button')
+    row.setAttribute('aria-label',image.filename+' · '+(processed ? '已处理' : '未处理'))
+    row.onkeydown=event=>{if(event.key==='Enter' || event.key===' '){event.preventDefault();row.click()}}
     row.onclick = () => openImage(image.id).catch(error => toast(error.message,true))
     list.append(row)
   }
+  if (!state.images.length) list.innerHTML='<p class="empty">暂无图片<br>点击“导入图片”添加训练样本</p>'
   $('labelStats').textContent = state.images.length + ' 张图片'
   if (!openCurrent) return updateLabelProgress()
   if (state.image && state.images.some(image => image.id === state.image.id)) await openImage(state.image.id)
   else if (state.images.length) await openImage(state.images[0].id)
   else resetEditor()
   updateLabelProgress()
+}
+
+async function refreshImageLibrary(){
+  if (document.hidden || !state.project || state.listLoading || state.annotationDirty || state.siteDirty || state.savingAnnotation || state.importingImages) return
+  await loadLabelImages(false)
+  if (!state.image && state.images.length) await openImage(state.images[0].id)
+}
+
+$('loadMoreImages').onclick=async()=>{
+  state.imageLimit+=200
+  try{await loadLabelImages(false)}catch(error){toast(error.message,true)}
 }
 
 function updateLabelProgress(){
@@ -475,7 +504,7 @@ $('saveLabels').onclick = async () => {
   $('nextImage').disabled = true
   state.savingAnnotation = true
   $('annotationWorkspace').inert = true
-  $('uploadForm').inert = true
+  $('importTrainingImages').disabled = true
   try{
     if (state.siteDirty) await persistSites()
     const saved = await api('/api/images/' + savedId + '/labels', {
@@ -501,14 +530,13 @@ $('saveLabels').onclick = async () => {
     drawCanvas()
     updateEditorAccess()
     state.annotationDirty = false
-    state.savingAnnotation = false
     if (state.filter === 'new') state.filter = 'approved'
     await loadProject()
     await loadLabelImages(false)
     await loadModelUpdate()
     toast('已保存')
   } catch(error){ toast(error.message, true) }
-  finally { state.savingAnnotation=false; $('uploadForm').inert=false; $('annotationWorkspace').inert=false; updateEditorAccess(); updateLabelProgress() }
+  finally { state.savingAnnotation=false; $('importTrainingImages').disabled=false; $('annotationWorkspace').inert=false; updateEditorAccess(); updateLabelProgress() }
 }
 
 window.addEventListener('resize', () => {
@@ -516,7 +544,7 @@ window.addEventListener('resize', () => {
 })
 
 function leaveAnnotation(){
-  if (state.savingAnnotation) return false
+  if (state.savingAnnotation || state.importingImages) return false
   if ((state.annotationDirty || state.siteDirty) && !confirm('当前标注或点位模板尚未保存，确定离开并放弃本次修改？')) return false
   state.annotationDirty = false
   state.siteDirty=false
@@ -1031,79 +1059,55 @@ async function loadModelUpdate(){
   } finally {state.modelLoading=false}
 }
 
-async function finishUpload(data){
-  const result=await api('/api/projects/'+state.project.id+'/images',data)
-  await loadProject()
-  await loadModelUpdate()
-  toast('已上传 '+result.saved.length+' 张，请保存缺陷标注')
-  state.filter='all'
-  await loadLabelImages(false)
-  await openImage(result.saved[0])
-  $('annotationEditor').scrollIntoView({block:'start',behavior:'smooth'})
+async function loadImportMode(){
+  const response=await fetch('/api/training-import-setting')
+  if (!response.ok) return
+  const setting=await response.json()
+  $('importModeBadge').textContent=setting.enabled ? '识别图片自动入库已开启' : '识别图片自动入库已关闭'
 }
 
-$('uploadForm').onsubmit=async event=>{
-  event.preventDefault()
-  const form=event.target
-  if (!form.elements.files.files.length) return toast('请选择图片',true)
-  if (!leaveAnnotation()) return
-  const button=form.querySelector('button[type=submit],button.primary')
+$('importTrainingImages').onclick=()=>$('trainingFiles').click()
+$('trainingFiles').onchange=async event=>{
+  const files=[...event.target.files]
+  event.target.value=''
+  if (!files.length || !state.project || !leaveAnnotation()) return
+  state.importingImages=true
+  const button=$('importTrainingImages')
   button.disabled=true
+  $('annotationWorkspace').inert=true
+  const saved=[],failed=[]
   try{
-    await finishUpload(new FormData(form))
-    form.elements.files.value=''
+    for (const [index,file] of files.entries()){
+      button.textContent='导入中 '+(index+1)+' / '+files.length
+      const data=new FormData()
+      data.append('files',file,file.name)
+      try{
+        const result=await api('/api/projects/'+state.project.id+'/images',data)
+        saved.push(...result.saved)
+      }catch(error){failed.push(file.name+'：'+error.message)}
+    }
+    state.importingImages=false
+    if (saved.length){
+      state.filter='all';state.imageLimit=200
+      await loadProject()
+      await loadLabelImages(false)
+      await openImage(saved[saved.length-1])
+      await loadModelUpdate()
+    }
+    toast('已导入 '+saved.length+' 张'+(failed.length ? '；失败 '+failed.length+' 张：'+failed.join('；') : '，请标注后保存'),!!failed.length)
   }catch(error){toast(error.message,true)}
-  finally{button.disabled=false}
-}
-
-function stopCamera(){
-  state.cameraStream?.getTracks().forEach(track=>track.stop())
-  state.cameraStream=null
-  $('captureVideo').srcObject=null
-  $('takePhoto').disabled=true
-}
-
-$('openCamera').onclick=async()=>{
-  $('cameraStatus').textContent='正在打开摄像头…'
-  $('cameraDialog').showModal()
-  try{
-    const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false})
-    if (!$('cameraDialog').open){stream.getTracks().forEach(track=>track.stop());return}
-    state.cameraStream=stream
-    $('captureVideo').srcObject=stream
-    await $('captureVideo').play()
-    if (!$('cameraDialog').open) return
-    $('takePhoto').disabled=false
-    $('cameraStatus').textContent='将整块板放入画面并对焦后拍照'
-  }catch(error){
-    stopCamera()
-    $('cameraStatus').textContent='摄像头打开失败，请检查摄像头权限或选择图片上传'
+  finally{
+    state.importingImages=false
+    button.disabled=false;button.textContent='↑ 导入图片'
+    $('annotationWorkspace').inert=false
   }
-}
-$('closeCamera').onclick=()=>{$('cameraDialog').close()}
-$('cameraDialog').addEventListener('close',stopCamera)
-$('takePhoto').onclick=async()=>{
-  const video=$('captureVideo')
-  if (!video.videoWidth || !video.videoHeight || !leaveAnnotation()) return
-  $('takePhoto').disabled=true
-  try{
-    const canvas=document.createElement('canvas')
-    canvas.width=video.videoWidth;canvas.height=video.videoHeight
-    canvas.getContext('2d').drawImage(video,0,0)
-    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.94))
-    if (!blob) throw Error('拍照失败，请重试')
-    const data=new FormData($('uploadForm'))
-    data.delete('files')
-    data.append('files',blob,'拍照-'+Date.now()+'.jpg')
-    await finishUpload(data)
-    $('cameraDialog').close()
-  }catch(error){toast(error.message,true);$('takePhoto').disabled=false}
 }
 
 document.querySelectorAll('[data-img-filter]').forEach(button=>{
   button.onclick=async()=>{
     if (!leaveAnnotation()) return
     state.filter=button.dataset.imgFilter
+    state.imageLimit=200
     try{await loadLabelImages()}catch(error){toast(error.message,true)}
   }
 })
@@ -1111,16 +1115,16 @@ document.querySelectorAll('[data-img-filter]').forEach(button=>{
 ;(async()=>{
   try{
     state.meta=await api('/api/meta')
-    const projects=await api('/api/projects')
-    const saved=localStorage.getItem('pcbPlatformProject')
-    let project=projects.find(item=>item.id===saved) || projects[0]
-    if (!project) project=await api('/api/projects',{name:'PCB焊点标注',station:'默认工位'})
+    const project=await api('/api/inspection-workspace')
     state.project=await api('/api/projects/'+project.id)
-    localStorage.setItem('pcbPlatformProject',project.id)
     if (location.hash) history.replaceState(null,'',location.pathname+location.search)
     setInterval(()=>loadModelUpdate().catch(()=>{
       $('latestModelLabel').title='模型信息暂时无法刷新'
     }),3000)
     await refreshWorkspace()
+    $('importTrainingImages').disabled=false
+    loadImportMode().catch(()=>{})
+    setInterval(()=>loadImportMode().catch(()=>{}),5000)
+    setInterval(()=>refreshImageLibrary().catch(error=>toast(error.message,true)),5000)
   }catch(error){toast(error.message,true)}
 })()

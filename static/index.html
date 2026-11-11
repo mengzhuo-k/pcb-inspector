@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>焊视 · 焊接质量工作台</title><link rel="stylesheet" href="/static/style.css?v=12"><link rel="stylesheet" href="/static/inspection.css?v=4"></head>
-<body>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>焊视 · 焊接质量工作台</title><link rel="stylesheet" href="/static/style.css?v=12"><link rel="stylesheet" href="/static/inspection.css?v=4"><link rel="stylesheet" href="/static/workspace.css?v=2"></head>
+<body class="inspection-page">
 <aside class="sidebar">
   <a class="brand" href="/static/index.html"><span class="brandmark">▦</span><span>焊视<small>PCB INSPECT</small></span></a>
   <div class="navlabel">焊接质量管理</div>
@@ -9,13 +9,15 @@
     <button class="nav active" data-page="work"><span>◎</span>采集检测</button>
     <button class="nav" data-page="import"><span>↑</span>批量导入</button>
     <button class="nav" data-page="processing"><span>▦</span>检测任务</button>
-    <button class="nav" data-page="rejected"><span>▣</span>异常复核</button>
+    <button class="nav" data-page="rejected"><span>▣</span>不合格图库</button>
     <button class="nav" data-page="logs"><span>▤</span>质量档案</button>
+    <div class="nav-divider"></div>
+    <a class="nav platform-nav" href="/platform/"><span>◇</span>模型训练</a>
   </nav>
-  <div class="sidebarfoot"><span class="light"></span>焊接缺陷识别<small id="activeModelLabel">正在读取模型版本</small></div>
+  <div class="sidebarfoot"><span class="light"></span>焊接缺陷识别<small id="activeModelLabel">正在读取模型版本</small><small>图片入库由顶部开关控制</small></div>
 </aside>
 <div class="app">
-  <header><span class="breadcrumb">质量管理 <span>/</span> 焊接质量工作台</span><div class="headeractions"><span>当前工位 <strong id="stationName">SMT-01</strong></span><span id="modelStatus" role="status">正在读取模型</span><button id="trainingLink">模型训练</button><button id="pendingLink">待复核 <b id="pendingCount">0</b></button></div></header>
+  <header><span class="breadcrumb">质量管理 <span>/</span> 焊接质量工作台</span><div class="headeractions"><span>当前工位 <strong id="stationName">SMT-01</strong></span><span id="modelStatus" role="status">正在读取模型</span><label class="import-switch" title="控制后续识别图片是否自动进入训练图库"><input id="trainingImportSwitch" type="checkbox" role="switch" disabled><span>图片入训练库</span><small id="trainingImportState">读取中</small></label><button id="trainingLink">模型训练</button><button id="pendingLink">不合格图库 <b id="pendingCount">0</b></button></div></header>
   <main>
     <p id="modelTestNotice" role="alert" hidden></p>
     <div class="heading"><div><h1 id="title">采集检测</h1><p id="pageDescription">采集板面图像，自动分析缺陷并生成检验单</p></div><span id="stats"></span></div>
@@ -36,8 +38,7 @@
     </section>
     <section id="training" hidden><iframe id="trainingFrame" title="漏接模型训练与标注" data-src="/training/?embedded=1"></iframe></section>
     <section id="rejected" hidden>
-      <article id="singleReviewPanel" hidden><div class="cardhead"><h2>待签字检验单</h2></div><div id="singleReviewList"></div></article>
-      <article><div class="cardhead"><h2>已提交的异常图片</h2><select id="rejectedBatchFilter" aria-label="筛选不合格批次"><option value="">全部检测批次</option></select></div><div class="rejected-tools"><span id="rejectedSummary" class="muted"></span><label><input id="onlyUnreviewed" type="checkbox">仅看未复查</label></div><div id="rejectedList"></div></article>
+      <article><div class="cardhead"><h2>已完成批次的不合格图片</h2><select id="rejectedBatchFilter" aria-label="筛选不合格批次"><option value="">全部已完成批次</option></select></div><div class="rejected-tools"><span id="rejectedSummary" class="muted"></span></div><div id="rejectedList"></div></article>
     </section>
     <section id="batch" hidden>
       <button id="backToProcesses" class="quiet">← 返回批次列表</button><p id="archiveHint" class="muted" hidden>该批次已完成归档，仅供查看。</p>
@@ -46,7 +47,7 @@
         <div class="batchbody">
           <p id="batchEmpty" class="empty">导入图片后，检测进度、合格率和逐图结果会显示在这里。</p>
           <div id="batchContent" hidden>
-            <div id="batchActions" class="batch-actions" hidden><button id="resumeImport" hidden>继续上传原始图片</button><input id="resumeFiles" type="file" multiple accept="image/*" hidden><button id="retryBatch" hidden>重试检测失败项</button><button id="finishBatch" class="primary" disabled>提交异常并完成批次</button></div>
+            <div id="batchActions" class="batch-actions" hidden><button id="resumeImport" hidden>继续上传原始图片</button><input id="resumeFiles" type="file" multiple accept="image/*" hidden><button id="retryBatch" hidden>重试检测失败项</button><button id="finishBatch" class="primary" disabled>完成批次并归档</button></div>
             <div class="batch-numbers" id="batchNumbers"></div>
             <div id="batchDefects" class="batch-defects" hidden></div>
             <div class="sampling"><div><h3>机器初判合格图片抽样复查</h3><p class="muted">随机抽样仅从机器初判合格图片中选取；重新抽样会替换当前清单。</p></div><select id="sampleMode" aria-label="抽样方式"><option value="percent">按比例 %</option><option value="count">按张数</option></select><input id="sampleValue" aria-label="抽样比例或张数" type="number" min="1" max="100" step="1" value="10"><button id="drawSample">随机抽样</button><span id="sampleProgress" class="muted"></span></div>
@@ -59,7 +60,7 @@
     <section id="work">
       <div class="review-navigation"><button id="backToBatch" class="quiet" hidden>← 返回批次结果</button><strong id="viewingFile"></strong><button id="previousImage" hidden>上一张</button><button id="nextImage" hidden>下一张</button></div>
       <article class="inspection-card">
-        <div class="cardhead"><div class="paneltitle"><h2>板面检测</h2><span class="tag" id="source">样例板面</span><span id="alignmentStatus" class="tag" role="status" hidden></span></div><div class="viewactions"><button id="overlays" aria-pressed="true">标注已开启</button><button id="expand">放大查看</button></div></div>
+        <div class="cardhead"><div class="paneltitle"><h2>板面检测</h2><span class="tag" id="source">样例板面</span><span id="alignmentStatus" class="tag" role="status" hidden></span><span id="templateStatus" class="tag" role="status" hidden></span></div><div class="viewactions"><button id="overlays" aria-pressed="true">标注已开启</button><button id="expand">放大查看</button></div></div>
         <div class="toolbar"><div class="captureactions"><label class="btn" for="file">↑ 上传图片</label><input type="file" accept="image/*" id="file" hidden><label class="btn" for="snap">拍照上传</label><input type="file" accept="image/*" capture="environment" id="snap" hidden><button id="camera">开启实时采集</button><button id="sample" class="quiet">载入示例</button></div></div>
         <div class="viewer" id="viewer">
           <div id="frame"><img id="photo" src="/static/sample-missing.png?v=20261110b" alt="漏焊样例 PCB 孔位与焊盘"><div id="marks"></div></div>
@@ -72,10 +73,10 @@
             </form>
             <div id="boardVerdict" class="board-verdict" hidden></div>
             <div class="detection-heading"><h3>疑似缺陷点位</h3><span id="detectionCount">待检测</span></div>
-            <p class="hint">悬停查看缺陷名称，点击检测框或条目可多选，再次点击取消</p>
+            <p class="hint">蓝色虚线为模板检查点位，橙色框为模型检出的缺陷。点击缺陷框或条目可多选。</p>
             <div class="target-selection"><span id="selectedCount">已选 0 / 0</span><button type="button" id="selectAllTargets" disabled>全选</button><button type="button" id="clearTargets" disabled>清空选择</button></div>
             <div id="callouts" aria-label="缺陷点位与识别置信度"></div><p id="detectionEmpty" class="empty">载入图像后开始检测<br><small>点位序号与置信度显示在此处</small></p>
-            <div class="panelnote">合格图片支持抽样复查，不合格图片进入异常复查</div>
+            <div class="panelnote">合格图片支持抽样复查，批次完成后，不合格图片自动归入图库</div>
           </aside>
           <canvas id="leaders" aria-hidden="true"></canvas><video id="video" muted playsinline hidden></video>
         </div>
@@ -87,9 +88,9 @@
     <p id="status" role="status"></p>
   </main>
 </div>
-<script src="/static/app.js?v=15"></script>
-<script src="/static/batch.js?v=16"></script>
+<script src="/static/app.js?v=18"></script>
+<script src="/static/batch.js?v=18"></script>
 <script src="/static/model-test-notice.js"></script>
-<script src="/static/model.js?v=3"></script>
+<script src="/static/model.js?v=4"></script>
 <script src="/static/correction.js?v=2"></script>
 </body></html>

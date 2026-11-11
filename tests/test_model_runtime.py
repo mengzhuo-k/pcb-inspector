@@ -112,8 +112,12 @@ class PlatformRuntimeTests(unittest.TestCase):
                     conn.execute("INSERT INTO deployments VALUES(?,?,?,?,1)",(index,"project",station,station))
             runtime=PlatformRuntime(database,factory=FakeModel)
             self.assertEqual(runtime.predict("image",station="A")[0].marker,"A")
+            regions,version,digest=runtime.predict_many(["first-region","second-region"],station="A")
+            self.assertEqual([region.marker for region in regions],["A","A"])
+            self.assertEqual(version,"A")
             self.assertEqual(runtime.predict("image",station="B")[0].marker,"B")
             self.assertEqual(runtime.predict("image",station="A")[0].marker,"A")
+
             with self.assertRaises(LookupError):
                 runtime.predict("image",station="missing")
             with closing(sqlite3.connect(database)) as conn, conn:
@@ -127,3 +131,33 @@ class PlatformRuntimeTests(unittest.TestCase):
                 runtime.predict("image",station="B")
             self.assertFalse(runtime.status("B")["ok"])
             self.assertEqual(runtime.predict("image",station="A")[0].marker,"A")
+
+
+    def test_unpublished_project_supplies_latest_template_and_reference_together(self):
+        import json
+        from model_runtime import PlatformRuntime
+        with tempfile.TemporaryDirectory() as folder:
+            database=Path(folder)/"platform.sqlite"
+            with closing(sqlite3.connect(database)) as conn,conn:
+                conn.executescript("""
+                    CREATE TABLE models(id TEXT,project_id TEXT,card TEXT);
+                    CREATE TABLE deployments(id INTEGER,project_id TEXT,station TEXT,model_id TEXT,active INTEGER);
+                    CREATE TABLE projects(id TEXT,station TEXT);
+                    CREATE TABLE alignment_sources(project_id TEXT,image_id TEXT,path TEXT);
+                    CREATE TABLE alignment_references(project_id TEXT,image_id TEXT);
+                    CREATE TABLE images(id TEXT,path TEXT);
+                    CREATE TABLE solder_templates(project_id TEXT,reference_id TEXT,revision INTEGER,sites TEXT);
+                    INSERT INTO projects VALUES('project','QA');
+                    INSERT INTO alignment_sources VALUES('project','ref','reference.jpg');
+                    INSERT INTO alignment_references VALUES('project','ref');
+                """)
+                conn.execute("INSERT INTO solder_templates VALUES('project','ref',1,?)",(json.dumps([{"id":"H01"}]),))
+            runtime=PlatformRuntime(database,factory=FakeModel)
+            first=runtime.alignment_reference("QA")
+            self.assertEqual(first["sites"],[{"id":"H01"}])
+            self.assertEqual(first["project_id"],"project")
+            with closing(sqlite3.connect(database)) as conn,conn:
+                conn.execute("UPDATE solder_templates SET revision=2,sites=?",(json.dumps([{"id":"H02"}]),))
+            latest=runtime.alignment_reference("QA")
+            self.assertEqual(latest["template_revision"],2)
+            self.assertEqual(latest["sites"],[{"id":"H02"}])

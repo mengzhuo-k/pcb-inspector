@@ -291,7 +291,7 @@ function renderProcessList() {
 
 function renderRejectedBatchFilter() {
   const selected = $('rejectedBatchFilter').value
-  $('rejectedBatchFilter').replaceChildren(new Option('全部检测批次',''))
+  $('rejectedBatchFilter').replaceChildren(new Option('全部已完成批次',''))
   for (const batch of workspaceBatches.filter(item=>item.state==='completed')) {
     $('rejectedBatchFilter').append(new Option(batch.name+' · '+batch.station,batch.id))
   }
@@ -301,23 +301,36 @@ function renderRejectedBatchFilter() {
 
 async function loadRejectedItems() {
   rejectedItems = await api('/api/batches/rejections')
-  exceptionPending=rejectedItems.filter(item=>!item.signed).length
-  const pending=historyRows.filter(needsReview).length+exceptionPending
-  $('pendingCount').textContent=pending
-  $('pendingMetric').textContent=pending
+  archivedRejectedCount=rejectedItems.length
+  $('pendingCount').textContent=archivedRejectedCount
   renderRejectedList()
 }
 
 function renderRejectedList() {
   const batchId = $('rejectedBatchFilter').value
-  const rows = rejectedItems.filter(item=>(!batchId || item.batch_id===batchId) && (!$('onlyUnreviewed').checked || !item.signed))
-  $('rejectedSummary').textContent = '共 '+rows.length+' 张异常图片 · 序号按该批次导入顺序'
+  const rows = rejectedItems.filter(item=>!batchId || item.batch_id===batchId)
+  $('rejectedSummary').textContent = '共 '+rows.length+' 张不合格图片 · 批次完成后自动归档 · 序号按导入顺序'
   $('rejectedList').replaceChildren()
   for (const item of rows) {
     const row = document.createElement('div')
     row.className='rejected-row'
     row.dataset.recordId=item.record_id
-    row.innerHTML='<img loading="lazy" src="/api/records/'+item.record_id+'/image" alt="'+esc(item.filename)+'"><div><strong>'+esc(item.batch_name)+' <span class="serial">#'+String(item.ordinal+1).padStart(3,'0')+'</span></strong><p>'+esc(item.filename)+'</p><small>'+esc(item.station)+' · '+item.count+' 个候选'+(item.classification?.is_defect ? ' · 整板 '+esc(item.classification.label)+' '+Math.round(item.classification.score*100)+'%' : '')+' · '+(item.signed ? '已复查 '+esc(item.reviewer) : '未复查')+'</small></div><span class="tag" data-state="'+esc(item.decision)+'">'+esc(item.decision)+'</span><button>复查此序号 →</button>'
+    row.innerHTML='<img loading="lazy" src="/api/records/'+item.record_id+'/image" alt="'+esc(item.filename)+'"><div><strong>'+esc(item.batch_name)+' <span class="serial">#'+String(item.ordinal+1).padStart(3,'0')+'</span></strong><p>'+esc(item.filename)+'</p><small>'+esc(item.station)+' · '+item.count+' 个候选'+(item.classification?.is_defect ? ' · 整板 '+esc(item.classification.label)+' '+Math.round(item.classification.score*100)+'%' : '')+(item.completed_at ? ' · 归档于 '+date(item.completed_at) : '')+'</small></div><span class="tag" data-state="'+esc(item.decision)+'">'+esc(item.decision)+'</span><button>查看图片 →</button>'
+    const actions=document.createElement('div')
+    actions.className='archive-actions'
+    actions.append(row.lastElementChild)
+    const remove=document.createElement('button')
+    remove.className='danger';remove.textContent='删除'
+    remove.onclick=async()=>{
+      if (!confirm('从不合格图库删除「'+item.filename+'」？质量档案中的原始批次记录会保留。')) return
+      remove.disabled=true
+      try{
+        await api('/api/exceptions/'+item.record_id,undefined,'DELETE')
+        await loadRejectedItems()
+        message('图片已从不合格图库删除，原始质量档案保留。')
+      }catch(error){message(error.message);remove.disabled=false}
+    }
+    actions.append(remove);row.append(actions)
     row.querySelector('button').onclick=async()=>{
       try {
         reviewIds=rows.map(entry=>entry.record_id)
@@ -330,7 +343,7 @@ function renderRejectedList() {
     }
     $('rejectedList').append(row)
   }
-  if (!rows.length) $('rejectedList').innerHTML='<p class="empty">已提交批次中暂无符合条件的不合格图片。</p>'
+  if (!rows.length) $('rejectedList').innerHTML='<p class="empty">暂无已完成批次的不合格图片。批次完成后会自动归档到这里。</p>'
 }
 
 function renderBatchHistory() {
@@ -343,6 +356,23 @@ function renderBatchHistory() {
     row.dataset.batchId=batch.id
     row.innerHTML='<div><strong>'+esc(batch.name)+'</strong><small>'+esc(batch.station)+' · '+date(batch.created)+'</small></div><span>图片 <b>'+batch.total+'</b></span><span class="success">合格 '+batch.passed+'</span><span class="rejected">不合格 '+batch.rejected+'</span><div class="history-rate"><small>合格率</small><strong>'+formatRate(batch.rate)+'</strong><small>已检测 '+batch.completed+' · 失败 '+batch.failed+'</small></div><span class="tag">'+batchStateLabels[batch.state]+'</span><button>查看批次</button>'
     row.querySelector('button').onclick=()=>enterBatch(batch.id,'logs')
+    const actions=document.createElement('div')
+    actions.className='archive-actions'
+    actions.append(row.lastElementChild)
+    const remove=document.createElement('button')
+    remove.className='danger';remove.textContent='删除'
+    remove.onclick=async()=>{
+      if (!confirm('删除批次「'+batch.name+'」？该批次全部图片、检验记录、报告及不合格图库归档将一并删除。')) return
+      remove.disabled=true
+      try{
+        await api('/api/batches/'+batch.id,undefined,'DELETE')
+        if (activeBatchId===batch.id){activeBatchId=null;activeBatch=null;reviewIds=[]}
+        if (historyRows.some(record=>record.id===currentRecordId && record.batch_id===batch.id)) currentRecordId=null
+        await refresh();await refreshWorkspace()
+        message('批次及对应的不合格图库归档已删除。')
+      }catch(error){message(error.message);remove.disabled=false}
+    }
+    actions.append(remove);row.append(actions)
     $('history').append(row)
   }
   // Records created before batch import was added are grouped by station and batch name.
@@ -387,7 +417,6 @@ document.querySelectorAll('[data-process-filter]').forEach(button=>button.onclic
   renderProcessList()
 })
 $('rejectedBatchFilter').onchange=renderRejectedList
-$('onlyUnreviewed').onchange=renderRejectedList
 $('finishBatch').onclick=async()=>{
   if (!activeBatchId || batchUploading) return
   const id = activeBatchId
@@ -398,7 +427,7 @@ $('finishBatch').onclick=async()=>{
     await refresh()
     await refreshWorkspace()
     switchPage('logs')
-    message('异常图片已转入异常复核，批次已完成并归入质量档案。')
+    message('批次已完成，不合格图片已自动存入不合格图库，完整批次已归入质量档案。')
   } catch(err) {
     message(err.message)
     await openBatch(id).catch(()=>{})

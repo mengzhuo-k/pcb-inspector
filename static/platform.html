@@ -1,33 +1,39 @@
 <!doctype html>
 <html lang="zh-CN"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>焊视 · 图片标注</title>
+<title>焊视 · 模型训练工作台</title>
 <link rel="stylesheet" href="./static/platform.css?v=20261111aq">
-</head><body>
-<header class="topbar"><div class="brand"><span class="mark">▦</span><span>焊视</span></div></header>
+<link rel="stylesheet" href="./static/workspace.css?v=2">
+</head><body class="training-page">
+<aside class="sidebar">
+  <a class="brand" href="/static/index.html"><span class="brandmark">▦</span><span>焊视<small>PCB INSPECT</small></span></a>
+  <div class="navlabel">焊接质量管理</div>
+  <nav>
+    <a class="nav" href="/static/index.html"><span>◎</span>采集检测</a>
+    <a class="nav" href="/static/index.html?page=import"><span>↑</span>批量导入</a>
+    <a class="nav" href="/static/index.html?page=processing"><span>▦</span>检测任务</a>
+    <a class="nav" href="/static/index.html?page=rejected"><span>▣</span>不合格图库</a>
+    <a class="nav" href="/static/index.html?page=logs"><span>▤</span>质量档案</a>
+    <div class="nav-divider"></div>
+    <a class="nav active" href="./" aria-current="page"><span>◇</span>模型训练</a>
+  </nav>
+  <div class="sidebarfoot"><span class="light"></span>图片与模型训练<small>支持识别入库与直接导入</small></div>
+</aside>
+<div class="app">
+<header><span class="breadcrumb">质量管理 <span>/</span> 模型训练工作台</span><div class="headeractions"><span id="latestModelLabel" role="status">正在读取最新模型…</span><a class="btn" href="/static/index.html">返回识别系统</a></div></header>
 <main>
-  <section class="model-update-bar" aria-label="模型更新">
-    <span id="latestModelLabel" role="status">正在读取最新模型…</span>
-    <a class="recognition-entry" href="/static/index.html">进入识别系统</a>
-  </section>
   <p id="modelTestNotice" role="alert" hidden></p>
-  <h1 class="workspace-title">拍照上传与缺陷标注</h1>
-  <details id="uploadPanel" class="panel upload-panel" open>
-    <summary>拍照 / 上传</summary>
-      <form id="uploadForm" class="grid3">
-        <label class="wide">图片文件<input id="uploadFiles" name="files" type="file" accept="image/*" multiple="" required=""></label>
-        <button class="primary">上传并入库</button><button id="openCamera" type="button" class="quiet">拍照上传</button>
-      </form>
-  </details>
+  <div class="heading"><div><h1>模型训练</h1><p>支持接收识别图片，也可直接导入训练图片。保存标注后，模型自动训练并更新。</p></div><div class="heading-actions"><span id="importModeBadge" class="sync-badge">正在读取入库设置</span><button id="importTrainingImages" class="primary" disabled>↑ 导入图片</button><input id="trainingFiles" type="file" accept="image/*" multiple hidden></div></div>
     <div id="annotationWorkspace" class="label-layout">
       <aside class="image-browser">
-        <div class="panelhead"><h2>图片</h2><span id="labelStats" class="muted">0 张图片</span></div>
+        <div class="panelhead"><h2>训练图库</h2><span id="labelStats" class="muted">0 张图片</span></div>
       <div class="filters">
         <button data-img-filter="all" class="active">全部</button>
         <button data-img-filter="new">未处理</button>
         <button data-img-filter="approved">已处理</button>
       </div>
         <div class="image-list" id="labelList"></div>
+        <button id="loadMoreImages" class="quiet" hidden>加载更多图片</button>
       </aside>
       <article id="annotationEditor" class="editor">
         <div class="editor-toolbar">
@@ -38,7 +44,7 @@
           <button id="deleteTrainingImage" class="danger">删除</button>
           <button id="saveLabels" class="primary">保存</button>
         </div>
-        <p id="editorEmpty" class="empty">选择或上传图片开始标注。</p>
+        <p id="editorEmpty" class="empty">从左侧选择图片，或点击“导入图片”开始标注。<br>识别系统开启入库后，导入的图片也会自动出现在这里。</p>
         <p id="readOnlyHint" class="muted" hidden>已处理 · 可悬停查看缺陷名称</p>
         <p id="alignmentHint" class="muted" role="status" hidden></p>
         <button id="setReference" class="quiet" hidden>将当前图片设为对齐标准图</button>
@@ -80,6 +86,7 @@
     </div>
 
 </main>
+</div>
 <dialog id="alignmentDialog" class="help-dialog">
   <div class="help-head"><h2>手动对齐板面</h2><button id="cancelAlignment" type="button">关闭</button></div>
   <div class="help-body"><p id="pointInstruction" role="status"></p>
@@ -88,15 +95,7 @@
     <button id="applyAlignment" class="primary" type="button">完成对齐</button>
   </div>
 </dialog>
-<dialog id="cameraDialog" class="help-dialog">
-  <div class="help-head"><h2>拍照上传</h2><button id="closeCamera" type="button" class="quiet">关闭</button></div>
-  <div class="help-body">
-    <video id="captureVideo" autoplay playsinline muted></video>
-    <p id="cameraStatus" role="status"></p>
-    <button id="takePhoto" type="button" class="primary" disabled>拍照并上传</button>
-  </div>
-</dialog>
 <div id="toast" role="status"></div>
 <script src="./static/model-test-notice.js"></script>
-<script src="./static/platform.js?v=20261111aq"></script>
+<script src="./static/platform.js?v=20261111sync"></script>
 </body></html>

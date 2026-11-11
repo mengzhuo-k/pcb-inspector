@@ -3,9 +3,10 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;',
 const message = value => { $('status').textContent = value }
 let stream, version = 0, localUrl, currentBoxes = [], historyRows = [], busy = false, currentRecordId = null
 let currentClassification = null
+let currentInspection = null
 let inspectionInput = null
 let currentReadOnly = false
-let exceptionPending=0
+let archivedRejectedCount=0
 let inspectionFilename = "inspection.jpg"
 const date = value => new Date(value).toLocaleString('zh-CN', {hour12:false})
 const selectedTargets = new Set()
@@ -52,6 +53,14 @@ function draw() {
   Object.assign(layer.style, {width:width+'px', height:height+'px',
     left:(frame.width-width)/2+'px', top:(frame.height-height)/2+'px'})
   layer.replaceChildren()
+  for (const site of currentInspection?.sites || []){
+    const [x1,y1,x2,y2]=site.rect
+    const mark=document.createElement('div')
+    mark.className='inspection-site'
+    mark.title='检查点位 '+site.id
+    Object.assign(mark.style,{left:x1*100+'%',top:y1*100+'%',width:(x2-x1)*100+'%',height:(y2-y1)*100+'%'})
+    layer.append(mark)
+  }
   currentBoxes.forEach((box, i) => {
     const [x,y,right,bottom] = box.rect
     const active = selectedTargets.has(i)
@@ -80,7 +89,7 @@ function drawLeaders() {
   if (!overlaysVisible || !selectedTargets.size) return
   const rail = $('callouts').getBoundingClientRect()
   const below = rail.top >= $('frame').getBoundingClientRect().bottom-1
-  const boxes = $('marks').children
+  const boxes = $('marks').querySelectorAll('.box')
   for (const label of $('callouts').children) {
     const index = Number(label.dataset.index)
     if (!selectedTargets.has(index)) continue
@@ -134,20 +143,24 @@ function renderVerdict(classification, processed) {
     + (alternatives ? '<small>次选：'+alternatives+'</small>' : '')
     + '<small class="verdict-note">整板分类显示缺陷类型，检测框显示定位结果。</small>'
 }
-function showImage(input, boxes, source, classification = null) {
+function showImage(input, boxes, source, classification = null, inspection = null) {
   if (localUrl) URL.revokeObjectURL(localUrl)
   localUrl = input instanceof Blob ? URL.createObjectURL(input) : null
   currentBoxes = boxes
   currentClassification = classification
+  currentInspection = inspection
+  $('templateStatus').hidden=!inspection
+  $('templateStatus').textContent=inspection ? '点位模板 · 已检查 '+inspection.checked_sites+' / '+inspection.total_sites+' 处' : ''
   selectedTargets.clear()
   const processed = source === '已建档' || source.startsWith('实时检测') || source.startsWith('智能检测')
   document.querySelector('.detection-panel').classList.toggle('has-results',processed)
-  const defectCount = boxes.length
+  const defectCount = inspection ? new Set(boxes.map(box=>box.site_id)).size : boxes.length
   $('defectMetric').textContent = processed ? defectCount : '—'
   $('defectMetric').nextElementSibling.textContent = processed ? (defectCount ? '项识别结果' : '未见明显缺陷') : '待检测'
-  $('detectionCount').textContent = processed ? boxes.length+' 个点位' : '待检测'
+  $('detectionCount').textContent = processed ? (inspection ? defectCount+' / '+inspection.checked_sites+' 处检出缺陷' : boxes.length+' 个点位') : '待检测'
   $('detectionEmpty').hidden = !!boxes.length || !!classification
   $('detectionEmpty').innerHTML = boxes.length ? '' : '未检出超过阈值的缺陷点位<br><small>整板分类结果显示在上方</small>'
+  if (inspection && !boxes.length) $('detectionEmpty').textContent='已检查 '+inspection.checked_sites+' 处模板点位，未检出超过阈值的缺陷。'
   renderVerdict(classification, processed)
   $('callouts').replaceChildren()
   boxes.forEach((box,i)=>{
@@ -156,7 +169,7 @@ function showImage(input, boxes, source, classification = null) {
     label.className = 'callout'
     label.dataset.index = i
     label.setAttribute('aria-pressed','false')
-    label.innerHTML = '<span class="number">#'+String(i+1).padStart(2,'0')+'</span><strong>'+esc(box.label)+'</strong><span class="score">'+(box.score*100).toFixed(1)+'<small>%</small></span><span class="confidence-label">识别置信度</span>'
+    label.innerHTML = '<span class="number">'+esc(box.site_id || '#'+String(i+1).padStart(2,'0'))+'</span><strong>'+esc(box.label)+'</strong><span class="score">'+(box.score*100).toFixed(1)+'<small>%</small></span><span class="confidence-label">识别置信度</span>'
     label.onclick = () => toggleTarget(i)
     $('callouts').append(label)
   })
@@ -215,9 +228,10 @@ async function selectImage(input, source) {
     const form=new FormData()
     form.append('image',blob,inspectionFilename)
     form.append('station',$('inspect').elements.station.value)
+    form.append('batch',$('inspect').elements.batch.value)
     const result=await api('/api/preview',form)
     if (token!==version || currentRecordId) return
-    showImage(result.image || blob,result.boxes,'智能检测 · '+result.boxes.length+' 个点位',result.classification)
+    showImage(result.image || blob,result.boxes,'智能检测 · '+result.boxes.length+' 项缺陷',result.classification,result.inspection)
     showAlignmentStatus(result.alignment)
     message(result.issues?.length ? result.issues.join('；') : '识别完成，可补充工艺参数并生成检验单。')
   }catch(error){if(token===version) message(error.message)}
@@ -253,11 +267,12 @@ $('camera').onclick = async () => {
     while (stream && version === token) {
       const blob = await capture(), form = new FormData()
       form.append('image',blob,'frame.jpg')
+      form.append('live_preview','1')
       form.append('station', $('inspect').elements.station.value)
       const result = await api('/api/preview',form)
       if (token === version){
         inspectionInput=blob
-        showImage(result.image || blob,result.boxes,'实时检测 · '+result.boxes.length+' 个点位',result.classification)
+        showImage(result.image || blob,result.boxes,'实时检测 · '+result.boxes.length+' 项缺陷',result.classification,result.inspection)
         showAlignmentStatus(result.alignment)
       }
       await new Promise(resolve => setTimeout(resolve,350))
@@ -270,6 +285,10 @@ function showAlignmentStatus(alignment){
 }
 
 function present(r) {
+  if (r.exception_mode){
+    $('title').textContent='不合格图片'
+    $('pageDescription').textContent='已完成批次的不合格图片归档，仅供查看'
+  }
   if (typeof closeCorrection === 'function') closeCorrection()
   stopCamera()
   currentRecordId = r.id
@@ -282,7 +301,7 @@ function present(r) {
   $('viewingFile').textContent = r.filename || ''
   if (typeof updateReviewNavigation === 'function') updateReviewNavigation(r)
   $('backToBatch').hidden = false
-  $('backToBatch').textContent = reviewOrigin === 'rejected' ? '← 返回异常列表' : (reviewOrigin === 'batch' && r.batch_id ? '← 返回批次结果' : '← 返回检验记录')
+  $('backToBatch').textContent = reviewOrigin === 'rejected' ? '← 返回不合格图库' : (reviewOrigin === 'batch' && r.batch_id ? '← 返回批次结果' : '← 返回检验记录')
   $('backToBatch').onclick = async () => {
     const target = reviewOrigin === 'batch' && r.batch_id ? 'batch' : reviewOrigin === 'rejected' ? 'rejected' : 'logs'
     switchPage(target)
@@ -291,7 +310,7 @@ function present(r) {
       else await refreshWorkspace()
     } catch(err) { message(err.message) }
   }
-  showImage('/api/records/'+r.id+'/image',r.boxes,'已建档',r.classification)
+  showImage('/api/records/'+r.id+'/image',r.boxes,'已建档',r.classification,r.inspection)
   const parameters=r.process_parameters || {}
   for (const key of ['station','batch','note']) $('inspect').elements[key].value = r[key] ?? ''
   $('stationName').textContent = r.station
@@ -312,7 +331,7 @@ function present(r) {
   const manualChecked = Array.isArray(r.manual) ? r.manual : []
   const manualTags = '<div class="manual-tags"><span>补标缺陷类型（可多选）</span>'+manualOptions.map(item=>'<label><input type="checkbox" name="manual" value="'+item+'"'+(manualChecked.includes(item) ? ' checked' : '')+'>'+item+'</label>').join('')+'</div>'
   const review = r.review_required ? '<form id="review"><h3>'+(r.signed ? '复核已签字 · '+esc(r.reviewer) : '复核签字')+'</h3><p class="muted">机器初判 '+esc(r.auto_decision || r.decision)+' · '+(r.signed ? '签字时间 '+date(r.signed) : '请核对缺陷位置和检验结论后签字')+'</p><input type="hidden" name="revision" value="'+(r.revision || 0)+'"><details><summary>补充缺陷与复核意见</summary>'+manualTags+'<label>复核意见<textarea name="comment" maxlength="2000" rows="2">'+esc(r.comment)+'</textarea></label></details><label>复核结论<select name="decision" required><option value="合格">合格</option><option value="不合格">不合格</option></select></label><label>质检员签字<input name="reviewer" maxlength="80" required value="'+esc(r.reviewer || localStorage.getItem('pcbReviewer') || '')+'" placeholder="输入姓名"></label><button class="primary">确认结论并签字</button>'+audit+'</form>' : audit
-  $('result').innerHTML='<article><div class="cardhead"><h2>'+(r.exception_mode ? '异常复核单' : r.readonly ? '归档检验单 · 只读' : '自动检验单')+'</h2><div class="viewactions"><span class="tag" data-state="'+esc(r.decision || '待检测')+'">'+esc(r.decision || '待检测')+'</span><button id="deleteCurrent" class="danger">删除检验单</button></div></div><div class="body"><dl class="inspection-sheet">'+sheet+'</dl>'+verdict+'<h3>缺陷分析与改进建议 · '+r.boxes.length+' 个定位结果</h3><div class="findings-grid">'+(findings || '<p class="muted">当前模型未检出超过阈值的缺陷，请结合板面图像进行复核。</p>')+'</div>'+(r.note ? '<p class="record-note">现场记录 · '+esc(r.note)+'</p>' : '')+'</div>'+review+'</article>'
+  $('result').innerHTML='<article><div class="cardhead"><h2>'+(r.exception_mode ? '不合格图片 · 归档只读' : r.readonly ? '归档检验单 · 只读' : '自动检验单')+'</h2><div class="viewactions"><span class="tag" data-state="'+esc(r.decision || '待检测')+'">'+esc(r.decision || '待检测')+'</span><button id="deleteCurrent" class="danger">删除检验单</button></div></div><div class="body"><dl class="inspection-sheet">'+sheet+'</dl>'+verdict+'<h3>缺陷分析与改进建议 · '+r.boxes.length+' 个定位结果</h3><div class="findings-grid">'+(findings || '<p class="muted">当前模型未检出超过阈值的缺陷，请结合板面图像进行复核。</p>')+'</div>'+(r.note ? '<p class="record-note">现场记录 · '+esc(r.note)+'</p>' : '')+'</div>'+review+'</article>'
   if (r.issues?.length) {
     const warning = document.createElement('p')
     warning.className = 'hint'
@@ -329,11 +348,11 @@ function present(r) {
     localStorage.setItem('pcbReviewer',e.target.elements.reviewer.value.trim())
     btn.disabled = true
     try {
-      present(await api(r.exception_mode ? '/api/exceptions/'+r.id : '/api/records/'+r.id+'/review',new FormData(e.target)))
+      present(await api('/api/records/'+r.id+'/review',new FormData(e.target)))
       await refresh()
       if (r.batch_id) await openBatch(r.batch_id)
       await refreshWorkspace()
-      message(r.exception_mode ? '异常复核结论已单独保存。' : '复核已保存，检验结果已更新。')
+      message('复核已保存，检验结果已更新。')
     }
     catch(err){message(err.message)} finally {btn.disabled=false}
   }
@@ -412,7 +431,6 @@ async function refresh() {
   $('stats').textContent=historyRows.length+' 份检验单　/　'+historyRows.filter(needsReview).length+' 份待签字'
   renderHistory()
   renderStatistics()
-  renderSingleReviewQueue()
 }
 function needsReview(record){
   if (record.readonly) return false
@@ -420,22 +438,14 @@ function needsReview(record){
     || (record.sampled && record.revision<=record.sample_revision)
     || (record.decision==='不合格' && !record.signed)
 }
-function renderSingleReviewQueue(){
-  const list=$('singleReviewList')
-  list.replaceChildren()
-  for (const record of historyRows.filter(item=>!item.batch_id && needsReview(item))){
-    list.append(recordRow(record))
-  }
-  $('singleReviewPanel').hidden=!list.children.length
-}
 
 function renderStatistics() {
   const signed = historyRows.filter(r=>['合格','不合格'].includes(r.decision))
   const passed = signed.filter(r=>r.decision === '合格').length
-  const pending = historyRows.filter(needsReview).length+exceptionPending
+  const pending = historyRows.filter(needsReview).length
   $('totalMetric').textContent = historyRows.length
   $('pendingMetric').textContent = pending
-  $('pendingCount').textContent = pending
+  $('pendingCount').textContent = archivedRejectedCount
   $('rateMetric').textContent = signed.length ? (100*passed/signed.length).toFixed(1)+'%' : '—'
   $('signedBasis').textContent = signed.length ? passed+' / '+signed.length+' 份已判定' : '暂无检测数据'
   const days = Array.from({length:7},(_,i)=>{
@@ -458,7 +468,7 @@ $('inspect').elements.batch.addEventListener('input',updateRate)
 $('inspect').elements.station.addEventListener('input',e=>{$('stationName').textContent=e.target.value.trim() || '—'})
 $('pendingLink').onclick = () => {
   switchPage('rejected')
-  renderSingleReviewQueue()
+  refreshWorkspace().catch(error=>message(error.message))
 }
 function switchPage(page) {
   if (busy) return
@@ -468,7 +478,7 @@ function switchPage(page) {
   const descriptions = {
     import:['批量导入','导入生产图片，同批工艺参数自动写入每份检验单'],
     processing:['检测批次','打开批次查看进度、处理失败项或安排抽样复查'],
-    rejected:['异常复核','核对缺陷与检验结论，完成质检员签字'],
+    rejected:['不合格图库','仅保存已完成批次的不合格图片，按批次、序号和文件名查看归档'],
     logs:['质量档案','追溯采集图像、工艺参数、分析结果与签字记录'],
     batch:['批次处理','查看检测进度、逐图结果和抽样清单'],
     work:['采集检测','采集板面图像，自动分析缺陷并生成检验单'],
@@ -512,4 +522,33 @@ $('voice').onclick=()=>{
 window.addEventListener('pagehide',stopCamera)
 refresh().catch(err=>message(err.message))
 
-switchPage('work')
+const requestedPage=new URLSearchParams(location.search).get('page')
+switchPage(['work','import','processing','rejected','logs'].includes(requestedPage) ? requestedPage : 'work')
+
+let importSettingSaving=false
+async function loadTrainingImportSetting(){
+  if (importSettingSaving) return
+  try{
+    const setting=await api('/api/training-import-setting')
+    if (importSettingSaving) return
+    $('trainingImportSwitch').checked=setting.enabled
+    $('trainingImportSwitch').disabled=false
+    $('trainingImportState').textContent=setting.enabled ? '已开启' : '已关闭'
+  }catch(error){$('trainingImportState').textContent='读取失败';$('trainingImportSwitch').title=error.message}
+}
+$('trainingImportSwitch').onchange=async event=>{
+  const enabled=event.target.checked
+  importSettingSaving=true;event.target.disabled=true
+  $('trainingImportState').textContent='保存中'
+  try{
+    const response=await fetch('/api/training-import-setting',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})})
+    const data=await response.json()
+    if (!response.ok) throw Error(data.error || '设置保存失败')
+    event.target.checked=data.enabled
+    $('trainingImportState').textContent=data.enabled ? '已开启' : '已关闭'
+    message(data.enabled ? '图片自动入库已开启，后续导入的图片将进入训练图库。' : '图片自动入库已关闭，后续导入的图片仅用于识别。')
+  }catch(error){event.target.checked=!enabled;message(error.message);$('trainingImportState').textContent=event.target.checked ? '已开启' : '已关闭'}
+  finally{importSettingSaving=false;event.target.disabled=false}
+}
+loadTrainingImportSetting()
+setInterval(loadTrainingImportSetting,5000)

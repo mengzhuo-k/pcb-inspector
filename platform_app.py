@@ -129,6 +129,9 @@ def initialize() -> None:
             reviewer TEXT DEFAULT '', reviewed_at TEXT DEFAULT '',
             note TEXT DEFAULT '', revision INTEGER DEFAULT 0, created TEXT);
         CREATE INDEX IF NOT EXISTS images_project ON images(project_id, created);
+        CREATE TABLE IF NOT EXISTS platform_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS inspection_sources(
+            source_key TEXT PRIMARY KEY,image_id TEXT NOT NULL,project_id TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS labels(
             id INTEGER PRIMARY KEY AUTOINCREMENT, image_id TEXT NOT NULL,
             class TEXT NOT NULL, x1 REAL, y1 REAL, x2 REAL, y2 REAL,
@@ -358,6 +361,53 @@ def project_detail(pid):
 
 # ------------------------------------------------------------------- images
 
+def inspection_workspace(conn):
+    """Keep automatic imports in the existing library, including after restarts."""
+    saved = conn.execute("SELECT value FROM platform_settings WHERE key='inspection_project'").fetchone()
+    row = conn.execute("SELECT * FROM projects WHERE id=?", (saved[0],)).fetchone() if saved else None
+    if not row:
+        row = conn.execute("SELECT * FROM projects ORDER BY created,rowid LIMIT 1").fetchone()
+        if not row:
+            pid = uuid.uuid4().hex
+            conn.execute("INSERT INTO projects(id,name,station,created) VALUES(?,?,?,?)",
+                         (pid, "PCB焊点标注", "", now()))
+            row = conn.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
+        conn.execute("INSERT OR REPLACE INTO platform_settings VALUES('inspection_project',?)", (row["id"],))
+    return dict(row)
+
+
+@app.get("/api/inspection-workspace")
+def get_inspection_workspace():
+    with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        return jsonify(inspection_workspace(conn))
+
+
+def import_inspection_image(source_key, content, filename, station="", batch="", captured_at=""):
+    """Idempotent delivery; source receipts survive employee deletion of images."""
+    with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        receipt = conn.execute("SELECT image_id FROM inspection_sources WHERE source_key=?", (source_key,)).fetchone()
+        if receipt:
+            return receipt[0]
+        pid = inspection_workspace(conn)["id"]
+        iid = uuid.uuid4().hex
+        folder = IMAGES / pid
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / (iid + ".jpg")
+        with Image.open(io.BytesIO(content)) as raw:
+            width, height = raw.size
+        path.write_bytes(content)
+        conn.execute("""INSERT INTO images(id,project_id,filename,path,width,height,batch,
+            board_serial,camera,captured_at,sha256,state,review_status,note,created)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,'new','pending',?,?)""",
+                     (iid, pid, (filename or "inspection.jpg")[:200], str(path), width, height,
+                      batch[:80], source_key, station[:80], captured_at,
+                      hashlib.sha256(content).hexdigest(), "识别系统自动导入", captured_at or now()))
+        conn.execute("INSERT INTO inspection_sources VALUES(?,?,?)", (source_key, iid, pid))
+        mark_model_update(conn, pid, awaiting_labels=True)
+    return iid
+
 @app.post("/api/projects/<pid>/images")
 def upload_images(pid):
     project(pid)
@@ -444,11 +494,12 @@ def list_images(pid):
         clauses.append("(filename LIKE ? OR batch LIKE ? OR board_serial LIKE ?)")
         values += [f"%{needle}%"] * 3
     limit = min(max(request.args.get("limit", 200, type=int), 1), 500)
+    offset = max(request.args.get("offset", 0, type=int), 0)
     rows = None
     with db() as conn:
         rows = conn.execute(f"""SELECT i.*, (SELECT count(*) FROM labels l WHERE l.image_id=i.id) AS label_count
-            FROM images i WHERE {' AND '.join(clauses)} ORDER BY i.created DESC LIMIT ?""",
-                            (*values, limit)).fetchall()
+            FROM images i WHERE {' AND '.join(clauses)} ORDER BY i.created DESC,i.rowid DESC LIMIT ? OFFSET ?""",
+                            (*values, limit, offset)).fetchall()
     return jsonify([dict(row) for row in rows])
 
 

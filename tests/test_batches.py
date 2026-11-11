@@ -248,7 +248,7 @@ class BatchTests(unittest.TestCase):
         self.assertEqual(self.client.post(f"/api/batches/{bid}/finish").json["state"],"completed")
         self.assertEqual(self.client.post(f"/api/batches/{bid}/retry").status_code,409)
 
-    def test_finalization_freezes_records_and_exception_reviews_are_independent(self):
+    def test_finalization_freezes_records_and_archives_rejected_images_readonly(self):
         bid=self.create_batch(2)
         self.upload(bid,0,red=True)
         self.upload(bid,1,red=False)
@@ -275,17 +275,90 @@ class BatchTests(unittest.TestCase):
         self.assertEqual(self.client.post(f"/api/records/{bad}/corrections",json={
             "project_id":project,"reviewer":"QA","boxes":[],"revision":0}).status_code,409)
         case=self.client.get(f"/api/exceptions/{bad}").json
+        self.assertTrue(case["readonly"])
+        self.assertFalse(case["review_required"])
         reviewed=self.client.post(f"/api/exceptions/{bad}",data={
             "reviewer":"异常QA","decision":"合格","revision":case["revision"]})
-        self.assertEqual(reviewed.status_code,200)
-        self.assertEqual(reviewed.json["decision"],"合格")
+        self.assertEqual(reviewed.status_code,405)
+        self.assertEqual(self.client.get(f"/api/exceptions/{bad}").json,case)
         self.assertEqual(self.client.get(f"/api/records/{bad}").json,frozen)
         self.assertEqual(self.client.get(f"/api/batches/{bid}").json,finished)
         self.assertEqual(self.client.post(f"/api/exceptions/{bad}",data={
-            "reviewer":"并发QA","decision":"不合格","revision":case["revision"]}).status_code,409)
+            "reviewer":"并发QA","decision":"不合格","revision":case["revision"]}).status_code,405)
         manifest=self.client.post(f"/api/batches/{bid}/report").json
         self.assertTrue(self.client.get(manifest["download_url"]).data.startswith(b"%PDF"))
         self.assertEqual(self.client.get(f"/api/records/{bad}/image").status_code,200)
+
+    def test_rejected_library_only_includes_final_rejections_from_completed_batches(self):
+        bid=self.create_batch(3)
+        self.upload(bid,0,red=True)
+        self.upload(bid,1,red=True)
+        self.upload(bid,2,red=False)
+        self.client.post(f"/api/batches/{bid}/start")
+        batch=self.wait_ready(bid)
+        corrected,bad,good=[item["record_id"] for item in batch["items"]]
+        self.assertFalse([r for r in self.client.get("/api/batches/rejections").json if r["batch_id"]==bid])
+        self.assertEqual(self.client.get(f"/api/exceptions/{bad}").status_code,404)
+        self.assertEqual(self.client.post(f"/api/records/{corrected}/review",data={
+            "reviewer":"QA","decision":"合格","revision":0}).status_code,200)
+        self.assertEqual(self.client.post(f"/api/batches/{bid}/finish").status_code,200)
+        cases=[r for r in self.client.get("/api/batches/rejections").json if r["batch_id"]==bid]
+        self.assertEqual([r["record_id"] for r in cases],[bad])
+
+        self.assertTrue(cases[0]["completed_at"])
+        self.assertEqual(self.client.get(f"/api/exceptions/{corrected}").status_code,404)
+        self.assertEqual(self.client.get(f"/api/exceptions/{good}").status_code,404)
+        # An old snapshot of an automatic false alarm must stay out of the library.
+        with app.db() as conn:
+            record=self.client.get(f"/api/records/{corrected}").json
+            record["ordinal"]=0
+            import json
+            conn.execute("INSERT INTO exception_cases(record_id,batch_id,snapshot) VALUES(?,?,?)",
+                         (corrected,bid,json.dumps(record)))
+        cases=[r for r in self.client.get("/api/batches/rejections").json if r["batch_id"]==bid]
+        self.assertEqual([r["record_id"] for r in cases],[bad])
+
+    def test_gallery_delete_preserves_quality_archive_and_does_not_return(self):
+        bid=self.create_batch(2)
+        self.upload(bid,0,red=True)
+        self.upload(bid,1,red=True)
+        self.client.post(f"/api/batches/{bid}/start")
+        batch=self.wait_ready(bid)
+        bad=batch["items"][0]["record_id"]
+        self.client.post(f"/api/batches/{bid}/finish")
+        self.assertEqual(self.client.delete(f"/api/exceptions/{bad}").status_code,200)
+        self.assertEqual(self.client.get(f"/api/exceptions/{bad}").status_code,404)
+        self.assertEqual(self.client.get(f"/api/records/{bad}/image").status_code,200)
+        self.assertEqual(self.client.get(f"/api/records/{bad}").json["decision"],"不合格")
+        with app.db() as conn:
+            app.capture_exceptions(conn,bid)
+        self.client.post(f"/api/batches/{bid}/finish")
+        cases=[r for r in self.client.get("/api/batches/rejections").json if r["batch_id"]==bid]
+        self.assertEqual(len(cases),1)
+        self.assertNotEqual(cases[0]["record_id"],bad)
+
+    def test_quality_archive_delete_removes_batch_images_reports_and_gallery(self):
+        bid=self.create_batch(2)
+        self.assertEqual(self.client.delete(f"/api/batches/{bid}").status_code,409)
+        self.upload(bid,0,red=True)
+        self.upload(bid,1)
+        self.client.post(f"/api/batches/{bid}/start")
+        batch=self.wait_ready(bid)
+        ids=[item["record_id"] for item in batch["items"]]
+        self.client.post(f"/api/records/{ids[0]}/review",data={"reviewer":"QA","decision":"不合格","revision":0})
+        self.client.post(f"/api/batches/{bid}/finish")
+        report=self.client.post(f"/api/batches/{bid}/report").json
+        self.assertEqual(self.client.delete(f"/api/batches/{bid}").status_code,200)
+        self.assertEqual(self.client.get(f"/api/batches/{bid}").status_code,404)
+        self.assertEqual(self.client.get(report["download_url"]).status_code,404)
+        for rid in ids:
+            self.assertEqual(self.client.get(f"/api/records/{rid}/image").status_code,404)
+            self.assertEqual(self.client.get(f"/api/exceptions/{rid}").status_code,404)
+        with app.db() as conn:
+            self.assertEqual(conn.execute("SELECT count(*) FROM reviews WHERE record_id IN (?,?)",ids).fetchone()[0],0)
+            self.assertEqual(conn.execute("SELECT count(*) FROM batch_items WHERE batch_id=?",(bid,)).fetchone()[0],0)
+        self.assertEqual(self.client.delete(f"/api/batches/{bid}").status_code,404)
+
 
 
 class InspectionAlignmentTests(unittest.TestCase):

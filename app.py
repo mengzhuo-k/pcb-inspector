@@ -87,7 +87,8 @@ with db() as conn:
     for name, kind in [("batch_id", "TEXT"), ("filename", "TEXT"), ("auto_decision", "TEXT"),
                        ("revision", "INTEGER DEFAULT 0"), ("model_version", "TEXT"), ("model_sha256", "TEXT"),
                        ("alignment", "TEXT"), ("original_image", "BLOB"), ("process_parameters", "TEXT"),
-                       ("classification", "TEXT"), ("issues", "TEXT DEFAULT '[]'"), ("corrections", "TEXT")]:
+                       ("classification", "TEXT"), ("issues", "TEXT DEFAULT '[]'"), ("corrections", "TEXT"),
+                       ("training_source_key", "TEXT"), ("inspection", "TEXT")]:
         if name not in columns:
             conn.execute(f"ALTER TABLE records ADD COLUMN {name} {kind}")
     conn.execute("""CREATE TABLE IF NOT EXISTS batches (
@@ -106,11 +107,19 @@ with db() as conn:
     conn.execute("""CREATE TABLE IF NOT EXISTS reports (
         id TEXT PRIMARY KEY,batch_id TEXT,created TEXT,fingerprint TEXT,filename TEXT,
         document BLOB,completed_at TEXT,UNIQUE(batch_id,fingerprint))""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS training_imports(
+        source_key TEXT PRIMARY KEY,image BLOB,filename TEXT,station TEXT,batch TEXT,
+        created TEXT,image_id TEXT,error TEXT DEFAULT '',skipped INTEGER DEFAULT 0)""")
+    if "skipped" not in {row["name"] for row in conn.execute("PRAGMA table_info(training_imports)")}:
+        conn.execute("ALTER TABLE training_imports ADD COLUMN skipped INTEGER DEFAULT 0")
+    conn.execute("CREATE TABLE IF NOT EXISTS inspection_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
 
 with db() as conn:
     conn.execute("""CREATE TABLE IF NOT EXISTS exception_cases(
         record_id TEXT PRIMARY KEY,batch_id TEXT NOT NULL,snapshot TEXT NOT NULL,
         review_data TEXT DEFAULT '{}',revision INTEGER DEFAULT 0)""")
+    if "deleted" not in {row["name"] for row in conn.execute("PRAGMA table_info(exception_cases)")}:
+        conn.execute("ALTER TABLE exception_cases ADD COLUMN deleted INTEGER DEFAULT 0")
 
 
 def require_open_batch(conn, bid):
@@ -126,7 +135,7 @@ def require_open_batch(conn, bid):
 def capture_exceptions(conn, bid):
     rows = conn.execute("""SELECT r.*,i.ordinal FROM records r
         JOIN batch_items i ON i.record_id=r.id WHERE r.batch_id=? AND i.state='done'
-        AND (r.decision='不合格' OR r.auto_decision='不合格')""", (bid,)).fetchall()
+        AND r.decision='不合格'""", (bid,)).fetchall()
     for row in rows:
         snapshot = document({key:row[key] for key in COLS.split(",")})
         snapshot["ordinal"] = row["ordinal"]
@@ -149,6 +158,100 @@ def now():
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
+def training_import_enabled(conn):
+    row = conn.execute("SELECT value FROM inspection_settings WHERE key='training_import_enabled'").fetchone()
+    return not row or row[0] == "1"
+
+
+@app.get("/api/training-import-setting")
+def get_training_import_setting():
+    with db() as conn:
+        return jsonify(enabled=training_import_enabled(conn))
+
+
+@app.post("/api/training-import-setting")
+def set_training_import_setting():
+    payload = request.get_json(silent=True) or {}
+    enabled = payload.get("enabled")
+    if not isinstance(enabled, bool):
+        abort(400, "入库开关必须为开启或关闭")
+    with db() as conn:
+        conn.execute("INSERT OR REPLACE INTO inspection_settings VALUES('training_import_enabled',?)",
+                     ("1" if enabled else "0",))
+    if enabled:
+        work_ready.set()
+    return jsonify(enabled=enabled)
+
+
+def queue_training_import(conn, content, filename, station="", batch="", created=None, historical=False, source_key=None):
+    key = source_key or hashlib.sha256(station.encode("utf-8") + b"\0" + content).hexdigest()
+    if historical and conn.execute("SELECT 1 FROM training_imports WHERE source_key=?", (key,)).fetchone():
+        return key
+    enabled = training_import_enabled(conn)
+    conn.execute("""INSERT INTO training_imports(
+        source_key,image,filename,station,batch,created,skipped) VALUES(?,?,?,?,?,?,?)
+        ON CONFLICT(source_key) DO UPDATE SET image=excluded.image,skipped=0,
+        filename=excluded.filename,batch=excluded.batch
+        WHERE training_imports.skipped=1 AND excluded.skipped=0""",
+                 (key, content if enabled else None, filename, station, batch, created or now(), int(not enabled)))
+    return key
+
+
+def import_to_training(img, filename, station="", batch=""):
+    buffer = io.BytesIO()
+    img.save(buffer, "JPEG", quality=94)
+    with db() as conn:
+        key = queue_training_import(conn, buffer.getvalue(), filename, station, batch)
+    flush_training_imports()
+    return key
+
+
+training_import_lock = threading.Lock()
+
+
+def flush_training_imports():
+    if not training_import_lock.acquire(blocking=False):
+        return
+    try:
+        import platform_app
+        while True:
+            with db() as conn:
+                if not training_import_enabled(conn):
+                    return
+                row = conn.execute("SELECT * FROM training_imports WHERE image_id IS NULL AND skipped=0 ORDER BY rowid LIMIT 1").fetchone()
+            if not row:
+                return
+            try:
+                iid = platform_app.import_inspection_image(row["source_key"], row["image"],
+                    row["filename"], row["station"], row["batch"], row["created"])
+            except Exception as exc:
+                app.logger.exception("图片自动入库失败，后台将重试")
+                with db() as conn:
+                    conn.execute("UPDATE training_imports SET error=? WHERE source_key=?", (str(exc), row["source_key"]))
+                return
+            with db() as conn:
+                conn.execute("UPDATE training_imports SET image_id=?,image=NULL,error='' WHERE source_key=?",
+                             (iid, row["source_key"]))
+    finally:
+        training_import_lock.release()
+
+
+def backfill_training_imports():
+    # Read one image at a time so historic libraries do not exhaust memory.
+    for query in (
+        "SELECT COALESCE(original_image,image) AS image,filename,station,batch,created,training_source_key FROM records",
+        """SELECT i.image,i.filename,b.station,b.name AS batch,b.created,NULL AS training_source_key FROM batch_items i
+            JOIN batches b ON b.id=i.batch_id WHERE i.image IS NOT NULL""",
+    ):
+        with db() as conn:
+            for row in conn.execute(query):
+                if row["image"]:
+                    queue_training_import(conn, row["image"], row["filename"],
+                                          row["station"] or "", row["batch"] or "", row["created"],
+                                          historical=True, source_key=row["training_source_key"])
+    flush_training_imports()
+
+
 def snapshot():
     upload = request.files.get("image")
     if not upload:
@@ -165,6 +268,7 @@ def snapshot():
 def detect(img, station=""):
     original = img
     alignment = None
+    reference = None
     try:
         reference = platform_runtime.alignment_reference(station)
         if reference:
@@ -175,6 +279,8 @@ def detect(img, station=""):
             alignment = dict(reference_id=reference["id"], matrix=result["matrix"], method=result["method"])
     except (ValueError, OSError, sqlite3.Error) as exc:
         abort(400, "板面对齐失败，请使用清晰完整的板面图片：" + str(exc))
+    if reference and "sites" in reference:
+        return detect_template_sites(img, original, station, reference, alignment)
     issues = []
     policy = platform_runtime.policy(station)
     classification = None
@@ -230,6 +336,38 @@ def detect(img, station=""):
     return detection
 
 
+def detect_template_sites(img, original, station, reference, alignment):
+    from site_inspection import prepare_sites, collect_site_defects
+    try:
+        sites,regions = prepare_sites(img, reference["sites"], alignment["matrix"])
+    except (ValueError, KeyError, TypeError) as exc:
+        abort(400, str(exc))
+    images = [img.crop(region) for region in regions]
+    issues = []
+    try:
+        results,version,digest = platform_runtime.predict_many(images,station=station,
+            project_id=reference.get("project_id"),imgsz=640,verbose=False)
+    except Exception:
+        app.logger.exception("点位检测模型不可用，尝试备用漏焊模型")
+        issues.append("当前使用备用漏焊模型检查点位，仅支持漏焊识别")
+        results,version,digest = model_runtime.predict_many(images,imgsz=640,
+            conf=RULES["missing_connection"][1],verbose=False)
+    for result in results:
+        issues.extend(getattr(result,"pcb_issues",[]))
+    missing = set(platform_runtime.policy(station)["required_classes"]) - set(results[0].names.values())
+    if missing:
+        issues.append("点位模型未覆盖必检类型：" + "、".join(sorted(missing)))
+    boxes = collect_site_defects(results,regions,img.size,sites,RULES,version)
+    detection = Detection(boxes,version,digest,issues=list(dict.fromkeys(issues)))
+    detection.image = img
+    detection.original_image = original
+    detection.alignment = alignment
+    detection.inspection = dict(mode="solder_sites",project_id=reference.get("project_id"),
+        reference_id=reference["id"],template_revision=reference["template_revision"],
+        total_sites=len(sites),checked_sites=len(sites),regions=len(regions),sites=sites)
+    return detection
+
+
 def field(name, limit, required=False):
     value = request.form.get(name, "").strip()
     if len(value) > limit or (required and not value):
@@ -244,7 +382,11 @@ def index():
 
 @app.post("/api/preview")
 def preview():
-    boxes = detect(snapshot(), request.form.get("station", ""))
+    img = snapshot()
+    station = request.form.get("station", "")[:80]
+    if request.form.get("live_preview") != "1":
+        import_to_training(img, request.files["image"].filename, station, request.form.get("batch", "")[:80])
+    boxes = detect(img, station)
     preview = None
     if boxes.alignment:
         buffer = io.BytesIO()
@@ -252,7 +394,7 @@ def preview():
         preview = "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
     return jsonify(boxes=boxes, model_version=boxes.model_version,
                    classification=boxes.classification, issues=boxes.issues,
-                   image=preview, alignment=boxes.alignment)
+                   image=preview, alignment=boxes.alignment,inspection=getattr(boxes,"inspection",None))
 
 
 @app.get("/api/model/status")
@@ -263,7 +405,14 @@ def model_status():
 def model_info():
     info = model_runtime.status()
     info["classifier"] = defect_classifier.status()
-    info["platform"] = platform_runtime.status(request.args.get("station", ""))
+    station = request.args.get("station", "")
+    info["platform"] = platform_runtime.status(station)
+    try:
+        reference = platform_runtime.alignment_reference(station)
+        info["inspection"] = dict(mode="solder_sites",total_sites=len(reference["sites"]),
+            template_revision=reference["template_revision"]) if reference and "sites" in reference else dict(mode="whole_board")
+    except (ValueError, OSError, sqlite3.Error):
+        info["inspection"] = dict(mode="unavailable")
     return info
 
 
@@ -295,14 +444,16 @@ def create():
     parameters = process_parameters(request.form)
     temp = parameters.get("temp")
     img = snapshot()
+    training_source_key = import_to_training(img, request.files["image"].filename, station, batch)
     boxes = detect(img, station)
     with db() as conn:
         rid = save_record(conn, img, boxes, station, batch, temp, note,
-                          filename=request.files["image"].filename, process=parameters)
+                          filename=request.files["image"].filename, process=parameters,
+                          training_source_key=training_source_key)
     return detail(rid)
 
 
-def save_record(conn, img, boxes, station, batch, temp=None, note="", batch_id=None, filename=None, process=None):
+def save_record(conn, img, boxes, station, batch, temp=None, note="", batch_id=None, filename=None, process=None, training_source_key=None):
     buffer = io.BytesIO()
     getattr(boxes, "image", img).save(buffer, "JPEG", quality=94)
     rid = uuid.uuid4().hex
@@ -356,13 +507,15 @@ def save_record(conn, img, boxes, station, batch, temp=None, note="", batch_id=N
     conn.execute("UPDATE records SET issues=? WHERE id=?", (json.dumps(issues, ensure_ascii=False), rid))
     original = io.BytesIO()
     getattr(boxes, "original_image", img).save(original, "JPEG", quality=94)
-    conn.execute("UPDATE records SET alignment=?,original_image=?,process_parameters=? WHERE id=?",
+    conn.execute("UPDATE records SET alignment=?,original_image=?,process_parameters=?,training_source_key=? WHERE id=?",
                  (json.dumps(getattr(boxes, "alignment", None)), original.getvalue(),
-                  json.dumps(process, ensure_ascii=False), rid))
+                  json.dumps(process, ensure_ascii=False), training_source_key, rid))
+    conn.execute("UPDATE records SET inspection=? WHERE id=?",
+                 (json.dumps(getattr(boxes,"inspection",None),ensure_ascii=False),rid))
     return rid
 
 
-COLS = "id,created,station,batch,temp,note,boxes,analysis,decision,reviewer,signed,manual,comment,batch_id,filename,auto_decision,revision,model_version,model_sha256,classification,issues,corrections,alignment,process_parameters"
+COLS = "id,created,station,batch,temp,note,boxes,analysis,decision,reviewer,signed,manual,comment,batch_id,filename,auto_decision,revision,model_version,model_sha256,classification,issues,corrections,alignment,process_parameters,inspection"
 
 
 def document(row):
@@ -373,6 +526,7 @@ def document(row):
     obj["process_parameters"] = json.loads(obj.get("process_parameters") or "{}")
     obj["alignment"] = json.loads(obj["alignment"]) if obj.get("alignment") else None
     obj["corrections"] = json.loads(obj["corrections"]) if obj.get("corrections") else None
+    obj["inspection"] = json.loads(obj["inspection"]) if obj.get("inspection") else None
     return obj
 
 
@@ -454,7 +608,7 @@ def review(rid):
             abort(404, "检验单已删除或不存在")
         require_open_batch(conn, row["batch_id"])
         if not (not row["batch_id"] or row["sampled"] or row["decision"] == "不合格" or row["auto_decision"] == "不合格"):
-            abort(400, "该图片未进入抽样清单或异常复查")
+            abort(400, "该图片不属于抽样清单或当前不合格图片")
         try:
             revision = int(request.form.get("revision", 0))
         except ValueError:
@@ -595,54 +749,38 @@ def batch_list():
 @app.get("/api/batches/rejections")
 def rejected_items():
     with db() as conn:
-        rows = conn.execute("""SELECT e.*,b.name,b.station,b.state FROM exception_cases e
+        rows = conn.execute("""SELECT e.*,b.name,b.station,b.state,b.completed_at FROM exception_cases e
             JOIN batches b ON b.id=e.batch_id WHERE b.state='completed'
-            ORDER BY b.created DESC,b.rowid DESC,e.rowid""").fetchall()
+            AND e.deleted=0
+            AND json_extract(e.snapshot,'$.decision')='不合格'
+            ORDER BY b.completed_at DESC,b.rowid DESC,e.rowid""").fetchall()
     result = []
     for row in rows:
         snapshot = json.loads(row["snapshot"])
-        review = json.loads(row["review_data"])
         result.append(dict(record_id=row["record_id"],exception_id=row["record_id"],
             batch_id=row["batch_id"],batch_name=row["name"],station=row["station"],
             filename=snapshot["filename"],ordinal=snapshot["ordinal"],
-            signed=review.get("signed"),reviewer=review.get("reviewer",""),
-            decision=review.get("decision",snapshot["decision"]),auto_decision=snapshot["auto_decision"],
+            completed_at=row["completed_at"],
+            decision=snapshot["decision"],auto_decision=snapshot["auto_decision"],
             classification=snapshot["classification"],count=len(snapshot["boxes"])))
     return jsonify(result)
 
 
-@app.route("/api/exceptions/<rid>", methods=["GET", "POST"])
+@app.route("/api/exceptions/<rid>",methods=["GET","DELETE"])
 def exception_case(rid):
     with db() as conn:
-        if request.method == "POST":
+        if request.method == "DELETE":
             conn.execute("BEGIN IMMEDIATE")
-        row = conn.execute("SELECT * FROM exception_cases WHERE record_id=?", (rid,)).fetchone()
+        row = conn.execute("""SELECT e.* FROM exception_cases e JOIN batches b ON b.id=e.batch_id
+            WHERE e.record_id=? AND b.state='completed' AND e.deleted=0
+            AND json_extract(e.snapshot,'$.decision')='不合格'""", (rid,)).fetchone()
         if not row:
-            abort(404, "异常复核记录不存在")
+            abort(404, "已完成批次的不合格图片不存在")
+        if request.method == "DELETE":
+            conn.execute("UPDATE exception_cases SET deleted=1 WHERE record_id=?", (rid,))
+            return jsonify(deleted=rid)
         snapshot = json.loads(row["snapshot"])
-        data = json.loads(row["review_data"])
-        revision = row["revision"]
-        if request.method == "POST":
-            reviewer = field("reviewer", 80, True)
-            decision = field("decision", 10, True)
-            manual = request.form.getlist("manual")
-            if decision not in ("合格","不合格") or any(item not in MANUAL for item in manual) or (manual and decision=="合格"):
-                abort(400, "请核对复核结论与补标项")
-            if str(revision) != request.form.get("revision"):
-                abort(409, "异常复核记录已更新，请重新打开")
-            signed = now()
-            history = data.get("reviews", [])
-            history.append(dict(revision=revision+1,reviewer=reviewer,decision=decision,
-                                created=signed,comment=field("comment", 2000)))
-            data = dict(reviewer=reviewer,decision=decision,manual=manual,signed=signed,
-                        comment=field("comment",2000),reviews=history)
-            conn.execute("UPDATE exception_cases SET review_data=?,revision=revision+1 WHERE record_id=?",
-                         (json.dumps(data,ensure_ascii=False),rid))
-            revision += 1
-    snapshot.update(data)
-    snapshot.update(id=rid,exception_mode=True,readonly=False,review_required=True,revision=revision,
-                    signed=data.get("signed"),reviewer=data.get("reviewer",""),
-                    reviews=data.get("reviews",[]))
+    snapshot.update(id=rid,exception_mode=True,readonly=True,review_required=False)
     return jsonify(snapshot)
 
 
@@ -719,7 +857,11 @@ def upload_item(bid, ordinal):
         conn.execute("""UPDATE batch_items SET state='queued',image=?,error=NULL
             WHERE batch_id=? AND ordinal=? AND state IN ('awaiting_upload','failed')""",
             (buffer.getvalue(), bid, ordinal))
+        batch = conn.execute("SELECT station,name FROM batches WHERE id=?", (bid,)).fetchone()
+        filename = conn.execute("SELECT filename FROM batch_items WHERE batch_id=? AND ordinal=?", (bid, ordinal)).fetchone()[0]
+        queue_training_import(conn, buffer.getvalue(), filename, batch["station"], batch["name"])
         conn.execute("UPDATE batches SET state='importing',completed_at=NULL WHERE id=? AND state IN ('ready','reviewing')", (bid,))
+    flush_training_imports()
     work_ready.set()
     return jsonify(state="queued")
 
@@ -774,12 +916,31 @@ def finish_batch(bid):
     return batch_detail(bid)
 
 
+@app.delete("/api/batches/<bid>")
+def delete_archived_batch(bid):
+    with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT state FROM batches WHERE id=?", (bid,)).fetchone()
+        if not row:
+            abort(404,"批次不存在或已删除")
+        if row["state"] != "completed":
+            abort(409,"请先完成批次归档，再从质量档案删除")
+        conn.execute("""DELETE FROM reviews WHERE record_id IN
+            (SELECT id FROM records WHERE batch_id=? UNION SELECT record_id FROM batch_items WHERE batch_id=?)""", (bid,bid))
+        conn.execute("DELETE FROM exception_cases WHERE batch_id=?", (bid,))
+        conn.execute("DELETE FROM reports WHERE batch_id=?", (bid,))
+        conn.execute("DELETE FROM records WHERE batch_id=? OR id IN (SELECT record_id FROM batch_items WHERE batch_id=?)", (bid,bid))
+        conn.execute("DELETE FROM batch_items WHERE batch_id=?", (bid,))
+        conn.execute("DELETE FROM batches WHERE id=?", (bid,))
+    return jsonify(deleted=bid)
+
+
 def report_snapshot(conn, bid):
     batch = conn.execute("SELECT id,name,station,created,state FROM batches WHERE id=?", (bid,)).fetchone()
     if not batch:
         abort(404, "批量任务不存在")
     if batch["state"] not in ("reviewing", "completed"):
-        abort(409, "请先提交批次到异常复查，再手动导出报告")
+        abort(409, "请先完成批次归档，再导出报告")
     rows = conn.execute("""SELECT i.ordinal,i.filename,i.state,i.error,i.record_id,i.sampled,i.sample_revision,
         r.decision,r.auto_decision,r.signed,r.reviewer,r.revision,r.comment,r.model_version,
         r.model_sha256,r.classification,r.temp,r.process_parameters,r.analysis,json_array_length(r.boxes) AS count
@@ -893,6 +1054,7 @@ def batch_worker():
     while True:
         work_ready.wait(timeout=2)
         work_ready.clear()
+        flush_training_imports()
         while True:
             with db() as conn:
                 conn.execute("BEGIN IMMEDIATE")
@@ -915,6 +1077,7 @@ def batch_worker():
                     rid = save_record(conn, img, boxes, item["station"], item["name"],
                                       batch_id=item["batch_id"], filename=item["filename"],
                                       temp=json.loads(item["process_parameters"] or "{}").get("temp"),
+                                      training_source_key=hashlib.sha256(item["station"].encode("utf-8") + b"\0" + item["image"]).hexdigest(),
                                       process=json.loads(item["process_parameters"] or "{}"))
                     conn.execute("""UPDATE batch_items SET state='done',record_id=?,image=NULL,error=NULL
                         WHERE batch_id=? AND ordinal=?""", (rid, item["batch_id"], item["ordinal"]))
@@ -926,6 +1089,7 @@ def batch_worker():
 
 
 def start_worker():
+    backfill_training_imports()
     with db() as conn:
         for batch in conn.execute("SELECT id FROM batches WHERE state='completed'").fetchall():
             capture_exceptions(conn, batch["id"])
