@@ -1,5 +1,6 @@
 """Inspection uploads reach training without relying on successful inference."""
 import io
+import hashlib
 import os
 import tempfile
 import time
@@ -44,7 +45,7 @@ class InspectionImportTests(unittest.TestCase):
             return [dict(row) for row in conn.execute("SELECT * FROM images WHERE camera=?", (self.station,))]
 
     def upload(self, endpoint="/api/preview", **fields):
-        return self.client.post(endpoint, data={"image": (io.BytesIO(image_bytes()), "board.png"),
+        return self.client.post(endpoint, data={"image": (io.BytesIO(image_bytes(tuple(hashlib.sha256(self.station.encode()).digest()[:3]))), "board.png"),
                                                "station": self.station, **fields})
 
     @patch.object(app, "detect", side_effect=detection)

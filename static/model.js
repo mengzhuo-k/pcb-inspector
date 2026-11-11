@@ -16,7 +16,6 @@ async function refreshModelStatus() {
     $('modelStatus').title = err.message
   }
 }
-$('trainingLink').onclick=()=>window.open('/platform','_blank')
 if (new URLSearchParams(location.search).get('page') === 'training') window.open('/platform','_blank')
 refreshModelStatus()
 setInterval(refreshModelStatus,5000)

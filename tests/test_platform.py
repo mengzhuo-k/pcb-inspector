@@ -1,4 +1,6 @@
 import io
+import hashlib
+from PIL import Image
 import os
 import tempfile
 import zipfile
@@ -27,11 +29,19 @@ class PlatformTests(unittest.TestCase):
             path = SAMPLES / "good_solder/good_solder_0.jpg"
         else:
             path = SAMPLES / "poor_solder/poor_solder_0.jpg"
-        with path.open("rb") as stream:
-            response = self.client.post(f"/api/projects/{self.project}/images", data={
-                "files": (stream, name), "batch": batch, "board_serial": board,
-                "primary_class": cls,
-            }, content_type="multipart/form-data")
+        # Distinct test samples must have distinct pixels, rather than only new filenames.
+        with Image.open(path) as source:
+            picture=source.convert("RGB")
+        marker=hashlib.sha256((name+board+batch).encode()).digest()
+        for offset in range(8):
+            picture.putpixel((offset,0),tuple(marker[offset*3:offset*3+3]))
+        stream=io.BytesIO()
+        picture.save(stream,"JPEG",quality=94)
+        stream.seek(0)
+        response = self.client.post(f"/api/projects/{self.project}/images", data={
+            "files": (stream, name), "batch": batch, "board_serial": board,
+            "primary_class": cls,
+        }, content_type="multipart/form-data")
         self.assertEqual(response.status_code, 200, response.get_json())
         return response.json["saved"][0]
 

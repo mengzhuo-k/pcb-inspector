@@ -301,8 +301,6 @@ function renderRejectedBatchFilter() {
 
 async function loadRejectedItems() {
   rejectedItems = await api('/api/batches/rejections')
-  archivedRejectedCount=rejectedItems.length
-  $('pendingCount').textContent=archivedRejectedCount
   renderRejectedList()
 }
 
@@ -322,12 +320,12 @@ function renderRejectedList() {
     const remove=document.createElement('button')
     remove.className='danger';remove.textContent='删除'
     remove.onclick=async()=>{
-      if (!confirm('从不合格图库删除「'+item.filename+'」？质量档案中的原始批次记录会保留。')) return
+      if (!confirm('从不合格产品删除「'+item.filename+'」？质量档案中的原始批次记录会保留。')) return
       remove.disabled=true
       try{
         await api('/api/exceptions/'+item.record_id,undefined,'DELETE')
         await loadRejectedItems()
-        message('图片已从不合格图库删除，原始质量档案保留。')
+        message('图片已从不合格产品删除，原始质量档案保留。')
       }catch(error){message(error.message);remove.disabled=false}
     }
     actions.append(remove);row.append(actions)
@@ -362,14 +360,14 @@ function renderBatchHistory() {
     const remove=document.createElement('button')
     remove.className='danger';remove.textContent='删除'
     remove.onclick=async()=>{
-      if (!confirm('删除批次「'+batch.name+'」？该批次全部图片、检验记录、报告及不合格图库归档将一并删除。')) return
+      if (!confirm('删除批次「'+batch.name+'」？该批次全部图片、检验记录、报告及不合格产品归档将一并删除。')) return
       remove.disabled=true
       try{
         await api('/api/batches/'+batch.id,undefined,'DELETE')
         if (activeBatchId===batch.id){activeBatchId=null;activeBatch=null;reviewIds=[]}
         if (historyRows.some(record=>record.id===currentRecordId && record.batch_id===batch.id)) currentRecordId=null
         await refresh();await refreshWorkspace()
-        message('批次及对应的不合格图库归档已删除。')
+        message('批次及对应的不合格产品归档已删除。')
       }catch(error){message(error.message);remove.disabled=false}
     }
     actions.append(remove);row.append(actions)
@@ -427,7 +425,7 @@ $('finishBatch').onclick=async()=>{
     await refresh()
     await refreshWorkspace()
     switchPage('logs')
-    message('批次已完成，不合格图片已自动存入不合格图库，完整批次已归入质量档案。')
+    message('批次已完成，不合格图片已自动存入不合格产品，完整批次已归入质量档案。')
   } catch(err) {
     message(err.message)
     await openBatch(id).catch(()=>{})

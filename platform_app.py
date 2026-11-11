@@ -129,6 +129,10 @@ def initialize() -> None:
             reviewer TEXT DEFAULT '', reviewed_at TEXT DEFAULT '',
             note TEXT DEFAULT '', revision INTEGER DEFAULT 0, created TEXT);
         CREATE INDEX IF NOT EXISTS images_project ON images(project_id, created);
+        CREATE TABLE IF NOT EXISTS image_fingerprints(
+            project_id TEXT NOT NULL,image_id TEXT NOT NULL,fingerprint TEXT NOT NULL,
+            PRIMARY KEY(image_id,fingerprint));
+        CREATE INDEX IF NOT EXISTS image_fingerprints_lookup ON image_fingerprints(project_id,fingerprint);
         CREATE TABLE IF NOT EXISTS platform_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS inspection_sources(
             source_key TEXT PRIMARY KEY,image_id TEXT NOT NULL,project_id TEXT NOT NULL);
@@ -251,6 +255,7 @@ def initialize() -> None:
                     current = conn.execute("SELECT * FROM images WHERE id=?", (row["id"],)).fetchone()
                     if current and current["alignment"] is None and current["path"] == row["path"]:
                         persist_alignment(conn, current, ref["id"], result)
+    index_existing_images()
     start_worker()
 
 
@@ -361,6 +366,52 @@ def project_detail(pid):
 
 # ------------------------------------------------------------------- images
 
+def image_identity(content, picture=None):
+    if picture is None:
+        with Image.open(io.BytesIO(content)) as raw:
+            if raw.width * raw.height > 24_000_000:
+                raise ValueError("图片超过 2400 万像素")
+            picture = ImageOps.exif_transpose(raw).convert("RGB")
+    buffer = io.BytesIO()
+    picture.save(buffer,"JPEG",quality=94)
+    normalized = buffer.getvalue()
+    pixels = hashlib.sha256(f"{picture.width}x{picture.height}:RGB:".encode()+picture.tobytes()).hexdigest()
+    keys = {"pixels:"+pixels,"bytes:"+hashlib.sha256(content).hexdigest(),
+            "bytes:"+hashlib.sha256(normalized).hexdigest()}
+    return picture,keys,normalized
+
+
+def remember_image(conn,pid,iid,keys):
+    conn.executemany("INSERT OR IGNORE INTO image_fingerprints VALUES(?,?,?)",
+                     [(pid,iid,key) for key in keys])
+
+
+def duplicate_image(conn,pid,keys):
+    placeholders=','.join('?' for _ in keys)
+    row=conn.execute(f"""SELECT i.id FROM images i JOIN image_fingerprints f ON f.image_id=i.id
+        WHERE f.project_id=? AND f.fingerprint IN ({placeholders})
+        ORDER BY (i.review_status='approved') DESC,i.created,i.rowid LIMIT 1""",(pid,*keys)).fetchone()
+    if row:
+        remember_image(conn,pid,row["id"],keys)
+        return row["id"]
+
+
+def index_existing_images():
+    # Keep the original identity when an editor later saves an aligned JPEG.
+    with db() as conn:
+        rows=conn.execute("""SELECT i.* FROM images i WHERE NOT EXISTS
+            (SELECT 1 FROM image_fingerprints f WHERE f.image_id=i.id)""").fetchall()
+        for row in rows:
+            paths={Path(row["path"]),IMAGES/row["project_id"]/(row["id"]+".jpg")}
+            for path in paths:
+                if not path.is_file():
+                    continue
+                try:
+                    _,keys,_=image_identity(path.read_bytes())
+                except (ValueError,OSError,Image.DecompressionBombError):
+                    continue
+                remember_image(conn,row["project_id"],row["id"],keys)
+
 def inspection_workspace(conn):
     """Keep automatic imports in the existing library, including after restarts."""
     saved = conn.execute("SELECT value FROM platform_settings WHERE key='inspection_project'").fetchone()
@@ -391,6 +442,11 @@ def import_inspection_image(source_key, content, filename, station="", batch="",
         if receipt:
             return receipt[0]
         pid = inspection_workspace(conn)["id"]
+        img,keys,_ = image_identity(content)
+        existing=duplicate_image(conn,pid,keys)
+        if existing:
+            conn.execute("INSERT INTO inspection_sources VALUES(?,?,?)",(source_key,existing,pid))
+            return existing
         iid = uuid.uuid4().hex
         folder = IMAGES / pid
         folder.mkdir(parents=True, exist_ok=True)
@@ -405,6 +461,7 @@ def import_inspection_image(source_key, content, filename, station="", batch="",
                       batch[:80], source_key, station[:80], captured_at,
                       hashlib.sha256(content).hexdigest(), "识别系统自动导入", captured_at or now()))
         conn.execute("INSERT INTO inspection_sources VALUES(?,?,?)", (source_key, iid, pid))
+        remember_image(conn,pid,iid,keys)
         mark_model_update(conn, pid, awaiting_labels=True)
     return iid
 
@@ -423,23 +480,26 @@ def upload_images(pid):
     primary = request.form.get("primary_class")
     if primary and primary not in ALL_LABELS:
         abort(400, "整板类型无效")
-    saved = []
+    saved,duplicates = [],[]
     for upload in files:
         try:
-            with Image.open(upload.stream) as raw:
-                if raw.width * raw.height > 24_000_000:
-                    abort(400, f"{upload.filename} 超过 2400 万像素")
-                img = ImageOps.exif_transpose(raw).convert("RGB")
+            img,keys,content = image_identity(upload.read())
+        except ValueError as exc:
+            abort(400,str(exc))
         except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
             abort(400, f"无法读取图片：{upload.filename}")
-        iid = uuid.uuid4().hex
-        folder = IMAGES / pid
-        folder.mkdir(parents=True, exist_ok=True)
-        path = folder / f"{iid}.jpg"
-        img.save(path, "JPEG", quality=94)
-        import hashlib
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
         with db() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            existing=duplicate_image(conn,pid,keys)
+            if existing:
+                duplicates.append(dict(id=existing,filename=upload.filename or "image.jpg"))
+                continue
+            iid = uuid.uuid4().hex
+            folder = IMAGES / pid
+            folder.mkdir(parents=True, exist_ok=True)
+            path = folder / f"{iid}.jpg"
+            path.write_bytes(content)
+            digest = hashlib.sha256(content).hexdigest()
             conn.execute("""INSERT INTO images(id,project_id,filename,path,width,height,
                 batch,board_serial,camera,lighting,captured_at,sha256,state,primary_class,
                 review_status,note,created) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
@@ -447,10 +507,10 @@ def upload_images(pid):
                           img.width, img.height, fields["batch"], fields["board_serial"],
                           fields["camera"], fields["lighting"], fields["captured_at"],
                           digest, "new", primary or None, "pending", fields["note"], now()))
+            remember_image(conn,pid,iid,keys)
+            mark_model_update(conn,pid,awaiting_labels=True)
         saved.append(iid)
-    with db() as conn:
-        mark_model_update(conn, pid, awaiting_labels=True)
-    return jsonify(saved=saved)
+    return jsonify(saved=saved,duplicates=duplicates,duplicate_count=len(duplicates))
 
 
 @app.get("/api/projects/<pid>/summary")
@@ -531,6 +591,7 @@ def delete_image(iid):
         conn.execute("DELETE FROM labels WHERE image_id=?", (iid,))
         conn.execute("DELETE FROM feedback WHERE image_id=?", (iid,))
         conn.execute("DELETE FROM annotation_views WHERE image_id=?", (iid,))
+        conn.execute("DELETE FROM image_fingerprints WHERE image_id=?", (iid,))
         conn.execute("DELETE FROM images WHERE id=?", (iid,))
         mark_model_update(conn, row["project_id"])
     paths = {path}
@@ -702,6 +763,9 @@ def solder_template(pid):
 
 
 def persist_alignment(conn, row, reference_id, result):
+    if not conn.execute("SELECT 1 FROM image_fingerprints WHERE image_id=?",(row["id"],)).fetchone():
+        _,keys,_=image_identity(Path(row["path"]).read_bytes())
+        remember_image(conn,row["project_id"],row["id"],keys)
     data = base64.b64decode(result["preview"].split(",", 1)[1])
     digest = hashlib.sha256(data).hexdigest()
     path = Path(row["path"]).with_name(row["id"] + "-aligned.jpg")
@@ -714,6 +778,8 @@ def persist_alignment(conn, row, reference_id, result):
     alignment = dict(matrix=result["matrix"], reference_id=reference_id)
     conn.execute("""UPDATE images SET path=?,sha256=?,width=?,height=?,alignment=?,revision=revision+1
         WHERE id=?""", (str(path), digest, result["width"], result["height"], json.dumps(alignment), row["id"]))
+    _,keys,_=image_identity(data)
+    remember_image(conn,row["project_id"],row["id"],keys)
 
 
 @app.post("/api/images/<iid>/alignment")
@@ -1521,24 +1587,30 @@ def list_feedback(pid):
 @app.post("/api/feedback/<fid>/convert")
 def convert_feedback(fid):
     with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         row = conn.execute("SELECT * FROM feedback WHERE id=?", (fid,)).fetchone()
         if not row:
             abort(404, "反馈不存在")
         if row["state"] == "converted":
             return jsonify(ok=True)
-        with Image.open(row["path"]) as source:
-            img = source.convert("RGB")
-            iid = uuid.uuid4().hex
-            target = IMAGES / row["project_id"] / f"{iid}.jpg"
-            img.save(target, "JPEG", quality=94)
-        import hashlib
-        digest = hashlib.sha256(target.read_bytes()).hexdigest()
+        img,keys,content=image_identity(Path(row["path"]).read_bytes())
+        existing=duplicate_image(conn,row["project_id"],keys)
+        if existing:
+            conn.execute("UPDATE feedback SET state='converted',image_id=? WHERE id=?",(existing,fid))
+            return jsonify(id=existing,duplicate=True)
+        iid=uuid.uuid4().hex
+        target=IMAGES/row["project_id"]/f"{iid}.jpg"
+        target.parent.mkdir(parents=True,exist_ok=True)
+        target.write_bytes(content)
+        digest = hashlib.sha256(content).hexdigest()
         conn.execute("""INSERT INTO images(id,project_id,filename,path,width,height,sha256,
             state,review_status,note,created) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
                      (iid, row["project_id"], f"feedback-{fid[:8]}.jpg", str(target),
                       img.width, img.height, digest, "new", "pending",
                       "由运行反馈转入：" + row["note"], now()))
         conn.execute("UPDATE feedback SET state='converted',image_id=? WHERE id=?", (iid, fid))
+        remember_image(conn,row["project_id"],iid,keys)
+        mark_model_update(conn,row["project_id"],awaiting_labels=True)
     return jsonify(id=iid)
 
 

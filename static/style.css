@@ -438,7 +438,6 @@ main:not(:has(#work:not([hidden]))) > .metrics { display: none; }
 }
 #modelStatus { display: inline-block; font-size: 11px; color: #7dd3fc; }
 #modelStatus.model-warning { color: #fbbf24; }
-#trainingLink.active { background: #1b3358; border-color: #38bdf8; color: #7dd3fc; }
 #trainingFrame { display: block; width: 100%; height: calc(100vh - 185px); min-height: 650px; border: 0; border-radius: 8px; background: #0f172a; }
 @media(max-width:800px) {
   header { height: auto; min-height: 48px; flex-wrap: wrap; gap: 8px; padding: 10px 18px; }

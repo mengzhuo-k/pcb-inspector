@@ -9,7 +9,7 @@
     <button class="nav active" data-page="work"><span>◎</span>采集检测</button>
     <button class="nav" data-page="import"><span>↑</span>批量导入</button>
     <button class="nav" data-page="processing"><span>▦</span>检测任务</button>
-    <button class="nav" data-page="rejected"><span>▣</span>不合格图库</button>
+    <button class="nav" data-page="rejected"><span>▣</span>不合格产品</button>
     <button class="nav" data-page="logs"><span>▤</span>质量档案</button>
     <div class="nav-divider"></div>
     <a class="nav platform-nav" href="/platform/"><span>◇</span>模型训练</a>
@@ -17,7 +17,7 @@
   <div class="sidebarfoot"><span class="light"></span>焊接缺陷识别<small id="activeModelLabel">正在读取模型版本</small><small>图片入库由顶部开关控制</small></div>
 </aside>
 <div class="app">
-  <header><span class="breadcrumb">质量管理 <span>/</span> 焊接质量工作台</span><div class="headeractions"><span>当前工位 <strong id="stationName">SMT-01</strong></span><span id="modelStatus" role="status">正在读取模型</span><label class="import-switch" title="控制后续识别图片是否自动进入训练图库"><input id="trainingImportSwitch" type="checkbox" role="switch" disabled><span>图片入训练库</span><small id="trainingImportState">读取中</small></label><button id="trainingLink">模型训练</button><button id="pendingLink">不合格图库 <b id="pendingCount">0</b></button></div></header>
+  <header><span class="breadcrumb">质量管理 <span>/</span> 焊接质量工作台</span><div class="headeractions"><span>当前工位 <strong id="stationName">SMT-01</strong></span><span id="modelStatus" role="status">正在读取模型</span><label class="import-switch" title="控制后续识别图片是否自动进入训练图库"><input id="trainingImportSwitch" type="checkbox" role="switch" disabled><span>图片入训练库</span><small id="trainingImportState">读取中</small></label></div></header>
   <main>
     <p id="modelTestNotice" role="alert" hidden></p>
     <div class="heading"><div><h1 id="title">采集检测</h1><p id="pageDescription">采集板面图像，自动分析缺陷并生成检验单</p></div><span id="stats"></span></div>
@@ -88,9 +88,8 @@
     <p id="status" role="status"></p>
   </main>
 </div>
-<script src="/static/app.js?v=18"></script>
-<script src="/static/batch.js?v=18"></script>
+<script src="/static/app.js?v=19"></script>
+<script src="/static/batch.js?v=19"></script>
 <script src="/static/model-test-notice.js"></script>
-<script src="/static/model.js?v=4"></script>
-<script src="/static/correction.js?v=2"></script>
+<script src="/static/model.js?v=5"></script>
 </body></html>

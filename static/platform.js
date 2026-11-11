@@ -1076,6 +1076,7 @@ $('trainingFiles').onchange=async event=>{
   button.disabled=true
   $('annotationWorkspace').inert=true
   const saved=[],failed=[]
+  let duplicateCount=0
   try{
     for (const [index,file] of files.entries()){
       button.textContent='导入中 '+(index+1)+' / '+files.length
@@ -1084,6 +1085,7 @@ $('trainingFiles').onchange=async event=>{
       try{
         const result=await api('/api/projects/'+state.project.id+'/images',data)
         saved.push(...result.saved)
+        duplicateCount+=result.duplicate_count || 0
       }catch(error){failed.push(file.name+'：'+error.message)}
     }
     state.importingImages=false
@@ -1094,7 +1096,7 @@ $('trainingFiles').onchange=async event=>{
       await openImage(saved[saved.length-1])
       await loadModelUpdate()
     }
-    toast('已导入 '+saved.length+' 张'+(failed.length ? '；失败 '+failed.length+' 张：'+failed.join('；') : '，请标注后保存'),!!failed.length)
+    toast('新增 '+saved.length+' 张'+(duplicateCount ? '，已跳过 '+duplicateCount+' 张重复图片' : '')+(failed.length ? '；失败 '+failed.length+' 张：'+failed.join('；') : saved.length ? '，请标注后保存' : ''),!!failed.length)
   }catch(error){toast(error.message,true)}
   finally{
     state.importingImages=false

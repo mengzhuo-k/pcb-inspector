@@ -6,7 +6,6 @@ let currentClassification = null
 let currentInspection = null
 let inspectionInput = null
 let currentReadOnly = false
-let archivedRejectedCount=0
 let inspectionFilename = "inspection.jpg"
 const date = value => new Date(value).toLocaleString('zh-CN', {hour12:false})
 const selectedTargets = new Set()
@@ -289,7 +288,6 @@ function present(r) {
     $('title').textContent='不合格图片'
     $('pageDescription').textContent='已完成批次的不合格图片归档，仅供查看'
   }
-  if (typeof closeCorrection === 'function') closeCorrection()
   stopCamera()
   currentRecordId = r.id
   currentReadOnly=!!r.readonly || !!r.exception_mode
@@ -301,7 +299,7 @@ function present(r) {
   $('viewingFile').textContent = r.filename || ''
   if (typeof updateReviewNavigation === 'function') updateReviewNavigation(r)
   $('backToBatch').hidden = false
-  $('backToBatch').textContent = reviewOrigin === 'rejected' ? '← 返回不合格图库' : (reviewOrigin === 'batch' && r.batch_id ? '← 返回批次结果' : '← 返回检验记录')
+  $('backToBatch').textContent = reviewOrigin === 'rejected' ? '← 返回不合格产品' : (reviewOrigin === 'batch' && r.batch_id ? '← 返回批次结果' : '← 返回检验记录')
   $('backToBatch').onclick = async () => {
     const target = reviewOrigin === 'batch' && r.batch_id ? 'batch' : reviewOrigin === 'rejected' ? 'rejected' : 'logs'
     switchPage(target)
@@ -338,7 +336,6 @@ function present(r) {
     warning.textContent = '检测提示 · ' + r.issues.join('；')
     $('result').prepend(warning)
   }
-  if (r.review_required && !r.exception_mode && !r.readonly && typeof installCorrection === 'function') installCorrection(r)
   $('deleteCurrent').hidden=currentReadOnly
   $('deleteCurrent').onclick = () => deleteRecord(r.id,r.batch)
   if ($('review')) $('review').elements.decision.value = r.decision || ''
@@ -445,7 +442,6 @@ function renderStatistics() {
   const pending = historyRows.filter(needsReview).length
   $('totalMetric').textContent = historyRows.length
   $('pendingMetric').textContent = pending
-  $('pendingCount').textContent = archivedRejectedCount
   $('rateMetric').textContent = signed.length ? (100*passed/signed.length).toFixed(1)+'%' : '—'
   $('signedBasis').textContent = signed.length ? passed+' / '+signed.length+' 份已判定' : '暂无检测数据'
   const days = Array.from({length:7},(_,i)=>{
@@ -466,10 +462,6 @@ function updateRate() {
 }
 $('inspect').elements.batch.addEventListener('input',updateRate)
 $('inspect').elements.station.addEventListener('input',e=>{$('stationName').textContent=e.target.value.trim() || '—'})
-$('pendingLink').onclick = () => {
-  switchPage('rejected')
-  refreshWorkspace().catch(error=>message(error.message))
-}
 function switchPage(page) {
   if (busy) return
   stopCamera()
@@ -478,7 +470,7 @@ function switchPage(page) {
   const descriptions = {
     import:['批量导入','导入生产图片，同批工艺参数自动写入每份检验单'],
     processing:['检测批次','打开批次查看进度、处理失败项或安排抽样复查'],
-    rejected:['不合格图库','仅保存已完成批次的不合格图片，按批次、序号和文件名查看归档'],
+    rejected:['不合格产品','仅保存已完成批次的不合格图片，按批次、序号和文件名查看归档'],
     logs:['质量档案','追溯采集图像、工艺参数、分析结果与签字记录'],
     batch:['批次处理','查看检测进度、逐图结果和抽样清单'],
     work:['采集检测','采集板面图像，自动分析缺陷并生成检验单'],
@@ -487,7 +479,6 @@ function switchPage(page) {
   $('title').textContent=descriptions[page][0]
   $('pageDescription').textContent=descriptions[page][1]
   if (page === 'training' && !$('trainingFrame').getAttribute('src')) $('trainingFrame').src=$('trainingFrame').dataset.src
-  $('trainingLink').classList.toggle('active',page==='training')
   const owner = page === 'batch' ? batchOrigin : page === 'work' ? (reviewOrigin === 'work' ? 'work' : reviewOrigin === 'batch' ? batchOrigin : reviewOrigin) : page
   document.querySelectorAll('.nav[data-page]').forEach(n=>n.classList.toggle('active',n.dataset.page===owner))
   message('')
