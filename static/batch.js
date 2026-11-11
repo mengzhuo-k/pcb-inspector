@@ -201,8 +201,6 @@ $('batchImport').onsubmit = async e=>{
     const batch = await batchApi('/api/batches',{
       station:form.elements.station.value, name:form.elements.batch.value,
       filenames:files.map(file=>file.name),
-      temp:form.elements.temp.value,reflow_seconds:form.elements.reflow_seconds.value,
-      solder_batch:form.elements.solder_batch.value,
     })
     activeBatchId = batch.id
     batchOrigin = 'processing'

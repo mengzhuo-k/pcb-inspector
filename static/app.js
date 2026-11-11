@@ -232,7 +232,7 @@ async function selectImage(input, source) {
     if (token!==version || currentRecordId) return
     showImage(result.image || blob,result.boxes,'智能检测 · '+result.boxes.length+' 项缺陷',result.classification,result.inspection)
     showAlignmentStatus(result.alignment)
-    message(result.issues?.length ? result.issues.join('；') : '识别完成，可补充工艺参数并生成检验单。')
+    message(result.issues?.length ? result.issues.join('；') : '识别完成，可核对结果并生成检验单。')
   }catch(error){if(token===version) message(error.message)}
 }
 
@@ -309,15 +309,13 @@ function present(r) {
     } catch(err) { message(err.message) }
   }
   showImage('/api/records/'+r.id+'/image',r.boxes,'已建档',r.classification,r.inspection)
-  const parameters=r.process_parameters || {}
   for (const key of ['station','batch','note']) $('inspect').elements[key].value = r[key] ?? ''
   $('stationName').textContent = r.station
   updateRate()
   const findings = r.analysis.filter(a=>a.label!=='未见明显缺陷').map(a=>'<div class="finding"><h3>'+esc(a.label)+'</h3><p>可能根因 · '+esc(a.cause)+'</p><p>改进建议 · '+esc(a.action)+'</p><small>'+esc(a.evidence)+'</small></div>').join('')
   const sheet=[
     ['检验编号',r.id.slice(0,12)],['采集时间',date(r.created)],['生产工位',r.station],['生产批次',r.batch],
-    ['回流峰值',r.temp!=null ? r.temp+' °C' : '未录入'],['回流时间',parameters.reflow_seconds!=null ? parameters.reflow_seconds+' 秒' : '未录入'],
-    ['焊膏批号',parameters.solder_batch || '未录入'],['检测模型',r.model_version || '历史版本'],
+    ['检测模型',r.model_version || '历史版本'],
   ].map(([name,value])=>'<div><dt>'+esc(name)+'</dt><dd>'+esc(value)+'</dd></div>').join('')
   const audit = r.reviews?.length ? '<details class="review-history"><summary>复查记录（'+r.reviews.length+' 次）</summary>'+r.reviews.map(item=>'<p>'+date(item.created)+'　'+esc(item.reviewer)+'　'+esc(item.decision)+'　'+esc(item.comment)+'</p>').join('')+'</details>' : ''
   const version = r.model_version || r.boxes[0]?.model || '历史记录未标明版本'
@@ -468,10 +466,10 @@ function switchPage(page) {
   currentPage = page
   for (const name of ['import','processing','rejected','logs','batch','work','training']) $(name).hidden = name !== page
   const descriptions = {
-    import:['批量导入','导入生产图片，同批工艺参数自动写入每份检验单'],
+    import:['批量导入','填写工位与批次，导入生产图片后自动检测并建档'],
     processing:['检测批次','打开批次查看进度、处理失败项或安排抽样复查'],
     rejected:['不合格产品','仅保存已完成批次的不合格图片，按批次、序号和文件名查看归档'],
-    logs:['质量档案','追溯采集图像、工艺参数、分析结果与签字记录'],
+    logs:['质量档案','追溯采集图像、分析结果与签字记录'],
     batch:['批次处理','查看检测进度、逐图结果和抽样清单'],
     work:['采集检测','采集板面图像，自动分析缺陷并生成检验单'],
     training:['模型训练','上传并标注样本，训练完成后自动更新检测模型'],

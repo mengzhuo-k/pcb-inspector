@@ -30,7 +30,7 @@
     <section id="import" hidden>
       <article class="batch-import">
         <div class="cardhead"><h2>导入一个检测批次</h2><span class="muted">每批最多 200 张 · 逐张上传 · 后台检测</span></div>
-        <form id="batchImport"><div class="fields"><label>工位<input name="station" value="SMT-01" maxlength="80" required></label><label>批次名称<input name="batch" maxlength="80" placeholder="输入生产批次" required></label><label class="import-picker">图片文件<input id="batchFiles" type="file" multiple accept="image/*"></label></div><details class="batch-process"><summary>本批次工艺参数</summary><div class="fields"><label>回流峰值 / °C<input name="temp" type="number" min="0" max="500" step="0.1"></label><label>回流时间 / 秒<input name="reflow_seconds" type="number" min="0" max="3600" step="0.1"></label><label>焊膏批号<input name="solder_batch" maxlength="80"></label></div></details><div class="formactions"><span id="selectedFiles" class="muted">选择本次要检测的所有图片</span><button class="primary" id="importRun">导入并开始检测 →</button></div></form>
+        <form id="batchImport"><div class="fields"><label>工位<input name="station" value="SMT-01" maxlength="80" required></label><label>批次名称<input name="batch" maxlength="80" placeholder="输入生产批次" required></label><label class="import-picker">图片文件<input id="batchFiles" type="file" multiple accept="image/*"></label></div><div class="formactions"><span id="selectedFiles" class="muted">选择本次要检测的所有图片</span><button class="primary" id="importRun">导入并开始检测 →</button></div></form>
       </article>
     </section>
     <section id="processing" hidden>
@@ -82,14 +82,14 @@
         </div>
         <div class="image-footer"><span class="muted">缺陷框定位 · 板面矫正 · 模型置信度</span><div class="quality"><span>本批次合格率</span><output id="passRate">—</output><small id="rateBasis">输入批次后显示</small></div></div>
       </article>
-      <div id="result"><article class="inspection-empty"><h2>检验单将在检测后自动生成</h2><p>采集信息、工艺参数、缺陷位置和分析建议会自动入表，完成复核后签字归档。</p></article></div>
+      <div id="result"><article class="inspection-empty"><h2>检验单将在检测后自动生成</h2><p>采集信息、缺陷位置和分析建议会自动入表，完成复核后签字归档。</p></article></div>
     </section>
     <section id="logs" hidden><article><div class="cardhead"><h2>批次检验记录</h2><input id="filter" placeholder="搜索批次名称或工位"></div><div id="history"></div></article><article class="recent"><div class="cardhead"><h2>近 7 日检验量</h2><span class="muted">按采集日期</span></div><div id="trend" class="trend"></div></article></section>
     <p id="status" role="status"></p>
   </main>
 </div>
-<script src="/static/app.js?v=19"></script>
-<script src="/static/batch.js?v=19"></script>
+<script src="/static/app.js?v=20"></script>
+<script src="/static/batch.js?v=20"></script>
 <script src="/static/model-test-notice.js"></script>
 <script src="/static/model.js?v=5"></script>
 </body></html>
