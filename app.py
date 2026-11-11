@@ -793,13 +793,39 @@ def exception_case(rid):
     return jsonify(snapshot)
 
 
+def summarize_point_defects(boxes, inspection=None):
+    """Count distinct abnormal sites, keeping multiple defect types at one site."""
+    sites=set()
+    groups={}
+    unlocated=0
+    for index,box in enumerate(boxes):
+        site=box.get('site_id')
+        site=str(site) if site not in (None,'') else None
+        if site is not None:
+            sites.add(site)
+        else:
+            unlocated+=1
+        key=box.get('key') or box.get('label') or 'unknown'
+        group=groups.setdefault(key,dict(key=key,label=box.get('label') or RULES.get(key,(key,))[0],
+                                         tokens=set(),point_based=True))
+        group['tokens'].add(('site',site) if site is not None else ('box',index))
+        group['point_based']=group['point_based'] and site is not None
+    templated=bool(inspection and inspection.get('mode')=='solder_sites')
+    defects=[dict(key=group['key'],label=group['label'],count=len(group['tokens']),point_based=group['point_based'])
+             for group in groups.values()]
+    defects.sort(key=lambda entry:(-entry['count'],entry['key']))
+    return dict(abnormal_sites=len(sites) if sites or (templated and not boxes) else None,
+                checked_sites=inspection.get('checked_sites') if templated else None,
+                defects=defects,unlocated_count=unlocated)
+
+
 @app.get("/api/batches/<bid>")
 def batch_detail(bid):
     with db() as conn:
         batch = conn.execute("SELECT * FROM batches WHERE id=?", (bid,)).fetchone()
         rows = conn.execute("""SELECT i.ordinal,i.filename,i.state,i.error,i.record_id,i.sampled,
             i.sample_revision,(i.image IS NOT NULL) AS retryable,r.decision,r.auto_decision,r.signed,r.reviewer,r.revision,r.model_version,
-            r.classification,r.alignment,r.inspection,json_array_length(r.boxes) AS count
+            r.classification,r.alignment,r.inspection,r.boxes AS detection_boxes,json_array_length(r.boxes) AS count
             FROM batch_items i LEFT JOIN records r ON i.record_id=r.id
             WHERE i.batch_id=? ORDER BY i.ordinal""", (bid,)).fetchall()
     if not batch:
@@ -811,6 +837,8 @@ def batch_detail(bid):
         item["classification"] = json.loads(item["classification"]) if item["classification"] else None
         item["alignment"] = json.loads(item["alignment"]) if item["alignment"] else None
         item["inspection"] = json.loads(item["inspection"]) if item["inspection"] else None
+        boxes=json.loads(item.pop('detection_boxes') or '[]')
+        item['defect_summary']=summarize_point_defects(boxes,item['inspection']) if item['state']=='done' else None
         items.append(item)
     done = [r for r in items if r["state"] == "done"]
     passed = sum(r["decision"] == "合格" for r in done)

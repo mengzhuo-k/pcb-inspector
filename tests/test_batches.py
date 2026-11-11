@@ -98,6 +98,40 @@ class BatchTests(unittest.TestCase):
             self.assertEqual(conn.execute("SELECT count(*) FROM feedback WHERE image_id=?",(iid,)).fetchone()[0],1)
         self.assertEqual(self.client.get("/api/records/"+rid).json["boxes"],[])
 
+    def test_gallery_summary_counts_distinct_sites_and_keeps_all_defect_types(self):
+        from model_runtime import Detection
+        bid=self.create_batch(3)
+        boxes=[dict(key=key,label=label,site_id=site,score=.8,rect=[.1,.1,.4,.4])
+               for key,label,site in [('missing_connection','疑似漏焊','H01'),
+                                     ('missing_connection','疑似漏焊','H01'),
+                                     ('solder_bridge','桥接','H01'),
+                                     ('missing_connection','疑似漏焊','H02')]]
+        for ordinal,findings in enumerate([boxes,[]]):
+            detection=Detection(findings,'v-test','sha')
+            detection.inspection=dict(mode='solder_sites',checked_sites=26,template_revision=1)
+            with app.db() as conn:
+                rid=app.save_record(conn,Image.new('RGB',(32,32),'white'),detection,'QA','QA-BATCH',batch_id=bid,filename=f'{ordinal}.png')
+                conn.execute("UPDATE batch_items SET state='done',record_id=? WHERE batch_id=? AND ordinal=?",(rid,bid,ordinal))
+        response=self.client.get('/api/batches/'+bid)
+        self.assertEqual(response.status_code,200)
+        first,normal,pending=response.json['items']
+        self.assertEqual(first['defect_summary'],dict(abnormal_sites=2,checked_sites=26,unlocated_count=0,defects=[
+            dict(key='missing_connection',label='疑似漏焊',count=2,point_based=True),
+            dict(key='solder_bridge',label='桥接',count=1,point_based=True)]))
+        self.assertEqual(normal['defect_summary'],dict(abnormal_sites=0,checked_sites=26,unlocated_count=0,defects=[]))
+        self.assertIsNone(pending['defect_summary'])
+        self.assertNotIn('detection_boxes',first)
+        self.assertEqual(self.client.get('/api/records/'+first['record_id']).json['boxes'],boxes)
+
+    def test_legacy_unlocated_defects_are_not_reported_as_template_sites(self):
+        boxes=[dict(key='missing_connection',label='疑似漏焊')]*2
+        summary=app.summarize_point_defects(boxes)
+        self.assertIsNone(summary['abnormal_sites'])
+        self.assertIsNone(summary['checked_sites'])
+        self.assertEqual(summary['unlocated_count'],2)
+        self.assertEqual(summary['defects'][0]['count'],2)
+        self.assertFalse(summary['defects'][0]['point_based'])
+
     def test_batch_process_parameters_flow_into_analysis_and_report(self):
         batch=self.client.post("/api/batches",json={"station":"PROCESS-BATCH","name":"Process check",
             "filenames":["board.png"],"temp":244,"reflow_seconds":54,"solder_batch":"SP-BATCH"}).json
