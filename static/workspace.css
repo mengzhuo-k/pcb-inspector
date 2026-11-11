@@ -81,6 +81,8 @@ article,.panel,.editor{background:#fff;border:1px solid var(--border);border-rad
 .inspection-site{position:absolute;border:1px dashed #38bdf8;background:#38bdf808;pointer-events:none;box-sizing:border-box}
 .archive-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap}
 .archive-actions button{white-space:nowrap}
+.image-card,.process-card{display:block;width:100%}
+.image-card .thumbnail{width:100%}
 .panelnote{background:#f7f9fd;color:#8b98ac;border-color:var(--border)}
 #camera{color:#3569e8;border-color:#c6d5f8;background:#f0f5ff}
 .finding{background:#f7f9fd;border-color:#e3e9f2;border-left-color:#a6b9db}
