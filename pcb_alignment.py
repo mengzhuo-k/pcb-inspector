@@ -40,6 +40,16 @@ def validate_points(value):
     return points
 
 
+def validate_registration(matrix):
+    corners=np.array([[0,0,1],[1,0,1],[1,1,1],[0,1,1]],dtype=float) @ matrix.T
+    depths=corners[:,2]
+    if (depths > 0).any() and (depths < 0).any() or np.min(np.abs(depths)) < 1e-6:
+        raise ValueError("板面匹配发生翻折，请重新拍摄完整板面")
+    points=np.float32(corners[:,:2]/depths[:,None])
+    if not np.isfinite(points).all() or not cv2.isContourConvex(points) or cv2.contourArea(points,oriented=True)<=0:
+        raise ValueError("板面匹配方向异常，请重新拍摄或使用手动四点对齐")
+
+
 def align(source_path, reference_path, source_points=None, reference_points=None, matrix=None):
     source, reference = read_image(source_path), read_image(reference_path)
     sh, sw = source.shape[:2]
@@ -79,6 +89,7 @@ def align(source_path, reference_path, source_points=None, reference_points=None
                 raise ValueError("匹配位置过于集中，请选择板面四周的对应点")
         transform = validate_matrix(np.diag([1 / rw, 1 / rh, 1]) @ pixel_matrix @ np.diag([sw, sh, 1]))
         method = "auto"
+    validate_registration(transform)
     # Matrix maps normalized original coordinates to normalized reference coordinates.
     source = read_image(source_path, limit=4096)
     sh, sw = source.shape[:2]

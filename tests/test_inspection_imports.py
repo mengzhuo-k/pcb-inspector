@@ -27,7 +27,7 @@ def image_bytes(color="white", format="PNG"):
     return stream.getvalue()
 
 
-def detection(image, station=""):
+def detection(image, station="", inspection_context=None):
     result = Detection([], "test", "test")
     result.alignment = None
     return result
@@ -72,6 +72,11 @@ class InspectionImportTests(unittest.TestCase):
         self.assertFalse(self.sources())
         self.assertEqual(self.upload("/api/records").status_code, 200)
         self.assertEqual(len(self.sources()), 1)
+
+    @patch.object(app, "detect", side_effect=detection)
+    def test_existing_image_preview_does_not_add_training_image(self, _):
+        self.assertEqual(self.upload(preview_only="1").status_code,200)
+        self.assertFalse(self.sources())
 
     def test_batch_is_imported_before_queue_runs_and_retries_are_idempotent(self):
         bid = self.client.post("/api/batches", json={"station": self.station, "name": "B-02",
@@ -168,7 +173,8 @@ class InspectionImportTests(unittest.TestCase):
             response = self.client.post(f"/api/batches/{bid}/items/0", data={
                 "image": (io.BytesIO(stream.getvalue()), "pattern.png")})
             self.assertEqual(response.status_code, 200)
-            self.client.post(f"/api/batches/{bid}/start")
+            with patch.object(app.platform_runtime,"alignment_reference",return_value=None):
+                self.client.post(f"/api/batches/{bid}/start")
             for attempt in range(100):
                 batch = self.client.get(f"/api/batches/{bid}").json
                 if batch["state"] == "ready":

@@ -1,4 +1,7 @@
 import io
+import base64
+import hashlib
+import numpy as np
 import os
 import tempfile
 import unittest
@@ -55,6 +58,31 @@ class SiteGeometryTests(unittest.TestCase):
             collect_site_defects([],[(0,0,1000,1000)],(1000,1000),sites,app.RULES,"v1")
 
 
+    def test_real_quarter_turns_align_to_reference_orientation_and_site_coordinates(self):
+        pixels=np.random.default_rng(17).integers(0,256,(400,600),dtype=np.uint8)
+        reference=Image.fromarray(np.repeat(pixels[:,:,None],3,axis=2))
+        path=Path(storage.name)/"rotation-reference.png"
+        reference.save(path)
+        for angle in (90,180):
+            aligned=pcb_alignment.align(reference.rotate(angle,expand=True),path)
+            image=Image.open(io.BytesIO(base64.b64decode(aligned["preview"].split(",")[1]))).convert("RGB")
+            self.assertEqual(image.size,reference.size)
+            point=np.asarray(aligned["matrix"]) @ [.25,.25,1]
+            expected=[.75,.25] if angle==90 else [.75,.75]
+            np.testing.assert_allclose(point[:2]/point[2],expected,atol=.005)
+            import cv2
+            actual_blur=cv2.GaussianBlur(np.asarray(image),(9,9),0).astype(float)
+            expected_blur=cv2.GaussianBlur(np.asarray(reference),(9,9),0).astype(float)
+            self.assertLess(np.abs(actual_blur-expected_blur).mean(),8)
+            sites,regions=prepare_sites(image,[dict(id="H01",x1=.2,y1=.2,x2=.3,y2=.3)],aligned["matrix"])
+            self.assertEqual(len(sites),1)
+        with self.assertRaisesRegex(ValueError,"方向异常"):
+            pcb_alignment.align(reference,path,matrix=[[-1,0,1],[0,1,0],[0,0,1]])
+        with self.assertRaisesRegex(ValueError,"翻折"):
+            pcb_alignment.align(reference,path,matrix=[[1,0,0],[0,1,0],[2,0,-.5]])
+
+
+
 class SiteInspectionTests(unittest.TestCase):
     def setUp(self):
         self.client=app.app.test_client()
@@ -103,6 +131,20 @@ class SiteInspectionTests(unittest.TestCase):
         with patch.object(app.platform_runtime,"alignment_reference",return_value=self.template), \
              patch("pcb_alignment.align",side_effect=ValueError("not matched")):
             self.assertEqual(self.client.post("/api/preview",data=self.upload()).status_code,400)
+
+
+    def test_pinned_template_does_not_reselect_project_and_changed_reference_is_rejected(self):
+        reference={**self.template,"sha256":hashlib.sha256(self.reference.read_bytes()).hexdigest()}
+        with patch.object(app.platform_runtime,"alignment_reference",side_effect=AssertionError("must use pinned reference")), \
+             patch("pcb_alignment.align",return_value=self.aligned), \
+             patch.object(app.platform_runtime,"predict_many",side_effect=self.predict):
+            detected=app.detect(self.original,"QA",inspection_context={"reference":reference})
+            self.assertEqual(detected.inspection["template_revision"],7)
+        self.reference.write_bytes(b"changed")
+        from werkzeug.exceptions import BadRequest
+        with self.assertRaises(BadRequest):
+            app.detect(self.original,"QA",inspection_context={"reference":reference})
+
 
 
 if __name__ == "__main__":

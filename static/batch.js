@@ -58,8 +58,17 @@ function renderBatch(batch) {
   document.querySelector('.sampling').hidden=readonly
   $('drawSample').disabled = readonly || !['ready','reviewing'].includes(batch.state) || !s.auto_passed
   $('finishBatch').hidden = readonly
+  $('reinspectBatch').hidden=!['ready','reviewing','completed'].includes(batch.state) || !batch.items.some(item=>item.record_id || item.retryable)
+  $('reinspectBatch').disabled=batchUploading
   $('finishBatch').disabled = !['ready','reviewing'].includes(batch.state) || batchUploading
-  $('batchActions').hidden=['resumeImport','retryBatch','finishBatch'].every(id=>$(id).hidden)
+  $('batchActions').hidden=['resumeImport','retryBatch','reinspectBatch','finishBatch'].every(id=>$(id).hidden)
+  const reference=batch.inspection_context?.reference
+  const aligned=batch.items.filter(item=>item.alignment).length
+  const templated=batch.items.filter(item=>item.inspection?.mode==='solder_sites').length
+  $('batchAlignmentStatus').textContent=reference
+    ? '标准图 '+reference.id.slice(0,8)+(reference.sites ? ' · 模板 v'+reference.template_revision+'（'+reference.sites.length+' 个点位）' : ' · 未配置点位模板')+' · 已矫正 '+aligned+' 张 · 已应用模板 '+templated+' 张'
+    : batch.inspection_context ? '未配置标准图，当前批次使用整板检测。请先在模型训练中设置标准图和点位模板。'
+    : '旧批次未记录当前模板应用状态。点击“重新矫正并应用当前模板”可从原图重新检测。'
   const rate = value=>value === null ? '—' : value.toFixed(1)+'%'
   $('batchNumbers').innerHTML = [
     ['已检测图片',s.completed+' / '+s.total,''],
@@ -98,30 +107,40 @@ function renderGallery() {
     const card = document.createElement('button')
     card.className='image-card'+(item.decision === '不合格' ? ' rejected' : '')+(item.sampled ? ' sampled' : '')
     card.dataset.ordinal = item.ordinal
-    card.disabled = item.state !== 'done'
+    card.disabled = !item.record_id && !item.retryable
     const sampledReview = item.sampled && item.revision > item.sample_revision
     const sampleBadge = item.sampled ? '<span class="sample-badge">抽样 · '+(sampledReview ? '已复查' : '待复查')+'</span>' : ''
-    const preview = item.record_id ? '<img loading="lazy" src="/api/records/'+item.record_id+'/image" alt="'+esc(item.filename)+'">' : '<span class="no-preview">'+stateLabels[item.state]+'</span>'
+    const preview = item.record_id ? '<img loading="lazy" src="/api/records/'+item.record_id+'/image" alt="'+esc(item.filename)+'">' : item.retryable ? '<img loading="lazy" src="/api/batches/'+activeBatch.id+'/items/'+item.ordinal+'/image" alt="'+esc(item.filename)+'">' : '<span class="no-preview">'+stateLabels[item.state]+'</span>'
     const state = item.state === 'done' ? item.decision : stateLabels[item.state]
     const identification = item.classification?.is_defect
       ? ' · 整板 '+esc(item.classification.label)+' '+Math.round(item.classification.score*100)+'%'
       : (item.classification ? ' · 整板未见明显缺陷' : '')
-    card.innerHTML='<div class="thumbnail">'+preview+sampleBadge+'</div><div class="image-info"><strong title="'+esc(item.filename)+'">#'+String(item.ordinal+1).padStart(3,'0')+' · '+esc(item.filename)+'</strong><span class="tag" data-state="'+esc(state)+'">'+esc(state)+'</span><small>'+ (item.state === 'done' ? '机器初判 '+esc(item.auto_decision)+identification+' · '+(item.signed ? '已复查' : item.sampled ? '抽样待复查' : item.decision === '不合格' ? '异常待复查' : '自动检测') : esc(item.error || ''))+'</small></div>'
-    card.onclick=async()=>{
-      try {
-        reviewIds = items.filter(entry=>entry.state==='done').map(entry=>entry.record_id)
-        const record = await api('/api/records/'+item.record_id)
-        reviewOrigin = 'batch'
-        switchPage('work')
-        present(record)
-        $('viewer').scrollIntoView({behavior:'smooth',block:'start'})
-      } catch(err) { message(err.message) }
-    }
+    const correction=item.state==='done' ? ' · '+(item.alignment ? '板面已矫正' : '未记录矫正')+(item.inspection ? ' · 模板 v'+item.inspection.template_revision+' · '+item.inspection.checked_sites+' 个点位' : ' · 未记录点位模板') : ''
+    card.innerHTML='<div class="thumbnail">'+preview+sampleBadge+'</div><div class="image-info"><strong title="'+esc(item.filename)+'">#'+String(item.ordinal+1).padStart(3,'0')+' · '+esc(item.filename)+'</strong><span class="tag" data-state="'+esc(state)+'">'+esc(state)+'</span><small>'+ (item.state === 'done' ? '机器初判 '+esc(item.auto_decision)+identification+correction+' · '+(item.signed ? '已复查' : item.sampled ? '抽样待复查' : item.decision === '不合格' ? '异常待复查' : '自动检测') : esc(item.error || ''))+'</small></div>'
+    card.onclick=()=>item.record_id ? inspectStoredRecord(item.record_id,'batch',items.filter(entry=>entry.state==='done').map(entry=>entry.record_id)) : inspectBatchImage(activeBatch,item)
     fragment.append(card)
   }
   $('batchGallery').replaceChildren(fragment)
   if (!items.length) $('batchGallery').innerHTML='<p class="empty">没有符合条件的图片</p>'
   document.querySelectorAll('[data-filter]').forEach(button=>button.classList.toggle('active',button.dataset.filter === galleryFilter))
+}
+
+async function inspectBatchImage(batch,item){
+  if (busy) return message('请等待当前检测完成')
+  try{
+    const response=await fetch('/api/batches/'+batch.id+'/items/'+item.ordinal+'/image')
+    if(!response.ok) throw Error('原图暂时不可用，请刷新批次后重试')
+    const blob=await response.blob()
+    $('inspect').elements.station.value=batch.station
+    $('stationName').textContent=batch.station
+    $('inspect').elements.batch.value=batch.name
+    $('inspect').elements.note.value=''
+    switchPage('work')
+    await selectImage(new File([blob],item.filename,{type:blob.type}),'批次原图重新检测',{previewOnly:true})
+    $('viewingFile').textContent='#'+String(item.ordinal+1).padStart(3,'0')+' · '+item.filename
+    $('backToBatch').hidden=false;$('backToBatch').textContent='← 返回检测任务'
+    $('backToBatch').onclick=async()=>{switchPage('batch');await openBatch(batch.id)}
+  }catch(error){message(error.message)}
 }
 
 async function updateReviewNavigation(record) {
@@ -130,7 +149,7 @@ async function updateReviewNavigation(record) {
   if (!record.batch_id) return
   try {
     if (activeBatch?.id !== record.batch_id) await openBatch(record.batch_id)
-    if (currentRecordId !== record.id) return
+    if ((currentRecordId || currentSourceRecordId) !== record.id) return
     if (!reviewIds.includes(record.id)) {
       reviewIds = activeBatch.items.filter(item=>item.state==='done').map(item=>item.record_id)
     }
@@ -141,9 +160,7 @@ async function updateReviewNavigation(record) {
     $('nextImage').disabled = index < 0 || index >= reviewIds.length-1
     async function navigate(offset) {
       try {
-        const next = await api((record.exception_mode ? '/api/exceptions/' : '/api/records/')+reviewIds[index+offset])
-        present(next)
-        $('viewer').scrollIntoView({behavior:'smooth',block:'start'})
+        await inspectStoredRecord(reviewIds[index+offset],reviewOrigin,reviewIds)
       } catch(err) {message(err.message)}
     }
     $('previousImage').onclick=()=>navigate(-1)
@@ -233,6 +250,19 @@ $('resumeFiles').onchange = async e=>{
 $('retryBatch').onclick=async()=>{
   try {await batchApi('/api/batches/'+activeBatchId+'/retry');await openBatch(activeBatchId)}
   catch(err) {message(err.message)}
+}
+$('reinspectBatch').onclick=async()=>{
+  if (!activeBatchId || batchUploading) return
+  if (!confirm('使用模型训练平台当前标准图和点位模板，从原图重新检测整批图片？结果会保存为一个新批次，原批次及归档保留。')) return
+  $('reinspectBatch').disabled=true
+  try{
+    const batch=await batchApi('/api/batches/'+activeBatchId+'/reinspect')
+    batchOrigin='processing';galleryFilter='all'
+    switchPage('batch')
+    await openBatch(batch.id)
+    await refreshWorkspace()
+    message('已从原图开始重新矫正并应用当前点位模板。')
+  }catch(error){message(error.message);$('reinspectBatch').disabled=false}
 }
 $('sampleMode').onchange=()=>{
   $('sampleValue').max=$('sampleMode').value==='percent' ? '100' : '200'
@@ -327,16 +357,13 @@ function renderRejectedList() {
       }catch(error){message(error.message);remove.disabled=false}
     }
     actions.append(remove);row.append(actions)
-    row.querySelector('button').onclick=async()=>{
-      try {
-        reviewIds=rows.map(entry=>entry.record_id)
-        reviewOrigin='rejected'
-        const record=await api('/api/exceptions/'+item.record_id)
-        switchPage('work')
-        present(record)
-        $('viewer').scrollIntoView({behavior:'smooth',block:'start'})
-      } catch(err) {message(err.message)}
-    }
+    const openImage=()=>inspectStoredRecord(item.record_id,'rejected',rows.map(entry=>entry.record_id))
+    row.querySelector('button').onclick=openImage
+    const thumbnail=row.querySelector('img')
+    thumbnail.onclick=openImage;thumbnail.style.cursor='pointer'
+    thumbnail.tabIndex=0;thumbnail.setAttribute('role','button')
+    thumbnail.setAttribute('aria-label','在采集检测中重新识别 '+item.filename)
+    thumbnail.onkeydown=event=>{if(event.key==='Enter' || event.key===' '){event.preventDefault();openImage()}}
     $('rejectedList').append(row)
   }
   if (!rows.length) $('rejectedList').innerHTML='<p class="empty">暂无已完成批次的不合格图片。批次完成后会自动归档到这里。</p>'

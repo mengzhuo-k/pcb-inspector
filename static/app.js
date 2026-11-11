@@ -6,6 +6,7 @@ let currentClassification = null
 let currentInspection = null
 let inspectionInput = null
 let currentReadOnly = false
+let currentSourceRecordId=null,activeStoredRecord=null,storedImageRequest=0
 let inspectionFilename = "inspection.jpg"
 const date = value => new Date(value).toLocaleString('zh-CN', {hour12:false})
 const selectedTargets = new Set()
@@ -207,33 +208,76 @@ $('expand').onclick = async () => {
   } catch (err) { message('当前浏览器无法全屏显示：'+err.message) }
 }
 document.addEventListener('fullscreenchange',draw)
-async function selectImage(input, source) {
+async function selectImage(input, source, options={}) {
   stopCamera()
+  if (!options.stored) ++storedImageRequest
   const token=version
   currentRecordId = null
   currentReadOnly=false
   $('inspect').inert=false
   $('run').hidden=false
   document.querySelector('#work .toolbar').hidden=false
-  reviewOrigin='work'
+  activeStoredRecord=options.stored || null
+  currentSourceRecordId=activeStoredRecord?.record.id || null
+  reviewOrigin=activeStoredRecord?.origin || 'work'
+  $('backToBatch').hidden=!activeStoredRecord
+  $('savedRecordAction').hidden=!activeStoredRecord
+  $('previousImage').hidden=true;$('nextImage').hidden=true
+  $('savedRecordAction').textContent='查看原检验单'
+  if (activeStoredRecord){
+    const context=activeStoredRecord
+    $('savedRecordAction').onclick=()=>present(context.record)
+    $('backToBatch').textContent=context.origin==='batch' ? '← 返回检测任务' : context.origin==='rejected' ? '← 返回不合格产品' : '← 返回质量档案'
+    $('backToBatch').onclick=async()=>{
+      switchPage(context.origin==='batch' ? 'batch' : context.origin)
+      if (context.origin==='batch') await openBatch(context.record.batch_id)
+      else await refreshWorkspace()
+    }
+  }
   inspectionInput = input
   inspectionFilename=input instanceof File ? input.name : 'inspection.jpg'
   $('alignmentStatus').hidden=true
   showImage(input, [], source, null)
   $('result').replaceChildren()
   message('正在矫正板面并识别缺陷…')
+  $('run').disabled=true
   try{
     const blob=input instanceof Blob ? input : await (await fetch(input)).blob()
     const form=new FormData()
     form.append('image',blob,inspectionFilename)
     form.append('station',$('inspect').elements.station.value)
     form.append('batch',$('inspect').elements.batch.value)
+    if (options.previewOnly) form.append('preview_only','1')
     const result=await api('/api/preview',form)
     if (token!==version || currentRecordId) return
     showImage(result.image || blob,result.boxes,'智能检测 · '+result.boxes.length+' 项缺陷',result.classification,result.inspection)
     showAlignmentStatus(result.alignment)
     message(result.issues?.length ? result.issues.join('；') : '识别完成，可核对结果并生成检验单。')
   }catch(error){if(token===version) message(error.message)}
+  finally{if(token===version) $('run').disabled=false}
+}
+
+async function inspectStoredRecord(id,origin,ids){
+  if (busy) return message('请等待当前检测完成')
+  const requestId=++storedImageRequest
+  try{
+    const record=await api((origin==='rejected' ? '/api/exceptions/' : '/api/records/')+id)
+    if (requestId!==storedImageRequest) return
+    if (record.alignment && record.original_available===0) throw Error('原检验单缺少原图，请重新上传原始图片进行矫正')
+    const response=await fetch('/api/records/'+id+'/image?original=1')
+    if (!response.ok) throw Error('无法读取原图，请重新打开图片')
+    const blob=await response.blob()
+    if (requestId!==storedImageRequest) return
+    for (const field of ['station','batch','note']) $('inspect').elements[field].value=record[field] || ''
+    $('stationName').textContent=record.station
+    if (ids) reviewIds=ids
+    switchPage('work')
+    await selectImage(new File([blob],record.filename || 'inspection.jpg',{type:blob.type}),
+      '原图重新检测',{previewOnly:true,stored:{record,origin}})
+    if (requestId!==storedImageRequest) return
+    await updateReviewNavigation(record)
+    $('viewer').scrollIntoView({behavior:'smooth',block:'start'})
+  }catch(error){if(requestId===storedImageRequest) message(error.message)}
 }
 
 for (const id of ['file','snap']) $(id).onchange = e => {
@@ -284,9 +328,14 @@ function showAlignmentStatus(alignment){
 }
 
 function present(r) {
-  if (r.exception_mode){
-    $('title').textContent='不合格图片'
-    $('pageDescription').textContent='已完成批次的不合格图片归档，仅供查看'
+  $('title').textContent='采集检测'
+  $('pageDescription').textContent='原检验单 · '+(r.readonly ? '归档结果仅供查看' : '查看并复核已保存的检测结果')
+  currentSourceRecordId=null
+  const context=activeStoredRecord?.record.id===r.id ? activeStoredRecord : null
+  $('savedRecordAction').hidden=!context
+  if(context){
+    $('savedRecordAction').textContent='按当前模板重新识别'
+    $('savedRecordAction').onclick=()=>inspectStoredRecord(r.id,context.origin,reviewIds)
   }
   stopCamera()
   currentRecordId = r.id
@@ -381,15 +430,7 @@ function recordRow(r) {
   const state = r.decision || '待检测'
   row.innerHTML='<strong>'+esc(r.filename || r.batch)+'</strong><span>'+esc(r.station)+'</span><span>'+date(r.created)+'</span><span>'+r.count+' 项候选</span><span class="tag" data-state="'+esc(state)+'">'+esc(state)+'<br><small>'+(r.signed ? '已复查' : r.sampled ? '抽样待复查' : r.decision === '不合格' ? '异常待复查' : '自动检测')+'</small></span><div class="rowactions"><button class="open-record">查看</button><button class="danger delete-record">删除</button></div>'
   row.querySelector('.delete-record').onclick = () => deleteRecord(r.id,r.batch)
-  row.querySelector('.open-record').onclick=async()=>{
-    try {
-      const rec=await api('/api/records/'+r.id)
-      reviewOrigin = 'logs'
-      switchPage('work')
-      present(rec)
-      $('viewer').scrollIntoView({behavior:'smooth',block:'center'})
-    } catch(err) {message(err.message)}
-  }
+  row.querySelector('.open-record').onclick=()=>inspectStoredRecord(r.id,'logs')
   return row
 }
 async function deleteRecord(id,batch) {
@@ -477,12 +518,15 @@ function switchPage(page) {
   $('title').textContent=descriptions[page][0]
   $('pageDescription').textContent=descriptions[page][1]
   if (page === 'training' && !$('trainingFrame').getAttribute('src')) $('trainingFrame').src=$('trainingFrame').dataset.src
-  const owner = page === 'batch' ? batchOrigin : page === 'work' ? (reviewOrigin === 'work' ? 'work' : reviewOrigin === 'batch' ? batchOrigin : reviewOrigin) : page
+  const owner = page === 'batch' ? batchOrigin : page
   document.querySelectorAll('.nav[data-page]').forEach(n=>n.classList.toggle('active',n.dataset.page===owner))
+  const url=new URL(location.href)
+  url.searchParams.set('page',page==='batch' ? batchOrigin : page)
+  history.replaceState(null,'',url)
   message('')
 }
 document.querySelectorAll('.nav[data-page]').forEach(n=>n.onclick=()=>{
-  if (n.dataset.page==='work' && currentRecordId){
+  if (n.dataset.page==='work' && (currentRecordId || currentSourceRecordId)){
     currentReadOnly=false;currentRecordId=null;inspectionInput=null
     $('inspect').inert=false
     $('run').hidden=false
@@ -490,6 +534,8 @@ document.querySelectorAll('.nav[data-page]').forEach(n=>n.onclick=()=>{
     $('result').replaceChildren()
     showImage('/static/sample-missing.png?v=20261110b',[],'样例板面')
     reviewOrigin='work'
+    currentSourceRecordId=null;activeStoredRecord=null
+    $('savedRecordAction').hidden=true;$('backToBatch').hidden=true
   }
   switchPage(n.dataset.page)
   refresh().catch(err=>message(err.message))

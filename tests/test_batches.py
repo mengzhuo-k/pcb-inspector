@@ -25,7 +25,7 @@ def image_bytes(red):
     return buffer.getvalue()
 
 
-def controlled_detection(image, station=""):
+def controlled_detection(image, station="", inspection_context=None):
     if image.getpixel((0, 0))[1] < 100:
         return [dict(key="missing_connection", label="疑似漏焊", score=.8, rect=[.1, .1, .4, .4])]
     return []
@@ -36,11 +36,14 @@ class BatchTests(unittest.TestCase):
     def setUpClass(cls):
         cls.detector = patch.object(app, "detect", controlled_detection)
         cls.detector.start()
+        cls.reference=patch.object(app.platform_runtime,"alignment_reference",return_value=None)
+        cls.reference.start()
         app.start_worker()
 
     @classmethod
     def tearDownClass(cls):
         cls.detector.stop()
+        cls.reference.stop()
 
     def setUp(self):
         self.client = app.app.test_client()
@@ -182,7 +185,7 @@ class BatchTests(unittest.TestCase):
                             dict(key="solder_bridge", label="桥接", score=.1)],
                        model_version="smd-defect-test", model_sha256="sha")
 
-        def classified(image, station=""):
+        def classified(image, station="", inspection_context=None):
             return app.Detection([], "v-test", "sha", classification=verdict)
 
         bid = self.create_batch(1)
@@ -204,7 +207,7 @@ class BatchTests(unittest.TestCase):
         entered = threading.Event()
         release = threading.Event()
 
-        def slow_detection(image, station=""):
+        def slow_detection(image, station="", inspection_context=None):
             entered.set()
             release.wait(5)
             return controlled_detection(image)
@@ -359,6 +362,69 @@ class BatchTests(unittest.TestCase):
             self.assertEqual(conn.execute("SELECT count(*) FROM batch_items WHERE batch_id=?",(bid,)).fetchone()[0],0)
         self.assertEqual(self.client.delete(f"/api/batches/{bid}").status_code,404)
 
+
+
+
+    def test_batch_pins_one_reference_and_template_revision_for_all_images(self):
+        bid=self.create_batch(2)
+        self.upload(bid,0,red=True)
+        self.upload(bid,1,red=True)
+        path=Path(storage.name)/"pinned-reference.jpg"
+        Image.new("RGB",(32,32),"white").save(path)
+        reference=dict(id="reference",path=str(path),project_id="project",template_revision=1,
+            sites=[dict(id="H01",x1=.1,y1=.1,x2=.2,y2=.2)])
+        entered,release=threading.Event(),threading.Event()
+        seen=[]
+        def detect(image,station="",inspection_context=None):
+            seen.append(inspection_context["reference"]["template_revision"])
+            entered.set();release.wait(4)
+            return controlled_detection(image,station)
+        with patch.object(app.platform_runtime,"alignment_reference",return_value=reference) as resolver,patch.object(app,"detect",detect):
+            response=self.client.post(f"/api/batches/{bid}/start")
+            self.assertEqual(response.status_code,200,response.json)
+            try:
+                self.assertTrue(entered.wait(3))
+                resolver.return_value={**reference,"template_revision":2}
+            finally:
+                release.set()
+            batch=self.wait_ready(bid)
+        self.assertEqual(seen,[1,1])
+        self.assertEqual(batch["inspection_context"]["reference"]["template_revision"],1)
+
+    def test_reinspection_uses_original_pixels_and_preserves_completed_archive(self):
+        bid=self.create_batch(1)
+        self.upload(bid,0,red=True)
+        original=self.client.get(f"/api/batches/{bid}/items/0/image")
+        self.assertEqual(original.status_code,200)
+        self.client.post(f"/api/batches/{bid}/start")
+        batch=self.wait_ready(bid)
+        rid=batch["items"][0]["record_id"]
+        self.client.post(f"/api/batches/{bid}/finish")
+        import json
+        wrong=io.BytesIO();Image.new("RGB",(80,50),"blue").save(wrong,"JPEG")
+        with app.db() as conn:
+            conn.execute("UPDATE records SET image=?,alignment=? WHERE id=?",(wrong.getvalue(),json.dumps({"reference_id":"old"}),rid))
+        before=self.client.get(f"/api/batches/{bid}").json
+        path=Path(storage.name)/"reinspection-reference.jpg"
+        Image.new("RGB",(32,32),"white").save(path)
+        reference=dict(id="current",path=str(path),project_id="project",template_revision=3,
+            sites=[dict(id="H01",x1=.1,y1=.1,x2=.2,y2=.2)])
+        observed=[]
+        def detect(image,station="",inspection_context=None):
+            observed.append((image.size,image.getpixel((0,0)),inspection_context["reference"]["id"]))
+            return controlled_detection(image,station)
+        with patch.object(app.platform_runtime,"alignment_reference",return_value=reference),patch.object(app,"detect",detect):
+            response=self.client.post(f"/api/batches/{bid}/reinspect")
+            self.assertEqual(response.status_code,200,response.json)
+            new_id=response.json["id"]
+            copied=self.wait_ready(new_id)
+        self.assertNotEqual(new_id,bid)
+        self.assertEqual(copied["source_batch_id"],bid)
+        self.assertEqual(observed[0][0],(32,32))
+        self.assertLess(observed[0][1][1],10)
+        self.assertEqual(observed[0][2],"current")
+        self.assertEqual(self.client.get(f"/api/batches/{bid}").json,before)
+        self.assertEqual(self.client.get(f"/api/records/{rid}/image").data,wrong.getvalue())
 
 
 class InspectionAlignmentTests(unittest.TestCase):

@@ -47,7 +47,8 @@
         <div class="batchbody">
           <p id="batchEmpty" class="empty">导入图片后，检测进度、合格率和逐图结果会显示在这里。</p>
           <div id="batchContent" hidden>
-            <div id="batchActions" class="batch-actions" hidden><button id="resumeImport" hidden>继续上传原始图片</button><input id="resumeFiles" type="file" multiple accept="image/*" hidden><button id="retryBatch" hidden>重试检测失败项</button><button id="finishBatch" class="primary" disabled>完成批次并归档</button></div>
+            <div id="batchActions" class="batch-actions" hidden><button id="resumeImport" hidden>继续上传原始图片</button><input id="resumeFiles" type="file" multiple accept="image/*" hidden><button id="retryBatch" hidden>重试检测失败项</button><button id="reinspectBatch" hidden>重新矫正并应用当前模板</button><button id="finishBatch" class="primary" disabled>完成批次并归档</button></div>
+            <p id="batchAlignmentStatus" class="muted" role="status"></p>
             <div class="batch-numbers" id="batchNumbers"></div>
             <div id="batchDefects" class="batch-defects" hidden></div>
             <div class="sampling"><div><h3>机器初判合格图片抽样复查</h3><p class="muted">随机抽样仅从机器初判合格图片中选取；重新抽样会替换当前清单。</p></div><select id="sampleMode" aria-label="抽样方式"><option value="percent">按比例 %</option><option value="count">按张数</option></select><input id="sampleValue" aria-label="抽样比例或张数" type="number" min="1" max="100" step="1" value="10"><button id="drawSample">随机抽样</button><span id="sampleProgress" class="muted"></span></div>
@@ -58,7 +59,7 @@
       </article>
     </section>
     <section id="work">
-      <div class="review-navigation"><button id="backToBatch" class="quiet" hidden>← 返回批次结果</button><strong id="viewingFile"></strong><button id="previousImage" hidden>上一张</button><button id="nextImage" hidden>下一张</button></div>
+      <div class="review-navigation"><button id="backToBatch" class="quiet" hidden>← 返回批次结果</button><strong id="viewingFile"></strong><button id="savedRecordAction" class="quiet" hidden>查看原检验单</button><button id="previousImage" hidden>上一张</button><button id="nextImage" hidden>下一张</button></div>
       <article class="inspection-card">
         <div class="cardhead"><div class="paneltitle"><h2>板面检测</h2><span class="tag" id="source">样例板面</span><span id="alignmentStatus" class="tag" role="status" hidden></span><span id="templateStatus" class="tag" role="status" hidden></span></div><div class="viewactions"><button id="overlays" aria-pressed="true">标注已开启</button><button id="expand">放大查看</button></div></div>
         <div class="toolbar"><div class="captureactions"><label class="btn" for="file">↑ 上传图片</label><input type="file" accept="image/*" id="file" hidden><label class="btn" for="snap">拍照上传</label><input type="file" accept="image/*" capture="environment" id="snap" hidden><button id="camera">开启实时采集</button><button id="sample" class="quiet">载入示例</button></div></div>
@@ -88,8 +89,8 @@
     <p id="status" role="status"></p>
   </main>
 </div>
-<script src="/static/app.js?v=20"></script>
-<script src="/static/batch.js?v=20"></script>
+<script src="/static/app.js?v=21"></script>
+<script src="/static/batch.js?v=21"></script>
 <script src="/static/model-test-notice.js"></script>
 <script src="/static/model.js?v=5"></script>
 </body></html>
