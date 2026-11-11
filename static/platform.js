@@ -1133,7 +1133,7 @@ async function changeModelSelection(payload){
   try{
     state.modelSelection=await api('/api/projects/'+state.project.id+'/model-selection',payload)
     await loadModelHistory(true);await loadModelUpdate()
-    toast(payload.follow_latest ? '已恢复自动使用最新模型' : '已选择识别模型，识别系统会自动加载')
+    toast(payload.follow_latest ? '已启用默认使用模型' : '已选择识别模型，识别系统会自动加载')
   }catch(error){toast(error.message,true)}
   finally{state.modelAction=false;renderModelHistory()}
 }

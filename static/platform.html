@@ -27,7 +27,7 @@
   <details id="modelHistory" class="model-history" open>
     <summary><strong>历史模型</strong><span id="modelHistorySummary">正在读取模型版本…</span></summary>
     <div class="model-history-body">
-      <div class="model-history-settings"><label class="inline-check"><input id="followLatestModel" type="checkbox" checked>自动使用最新模型</label><span id="modelSelectionHint" role="status"></span></div>
+      <div class="model-history-settings"><label class="inline-check"><input id="followLatestModel" type="checkbox" checked>默认使用模型</label><span id="modelSelectionHint" role="status"></span></div>
       <div class="model-improvement">
         <div><strong id="trainingBaseLabel">训练基础：初始模型</strong><p id="trainingBaseHint">可从下方选择历史模型继续改进。</p><p id="modelTrainingState" role="status"></p></div>
         <div class="archive-actions"><button id="startModelImprovement" class="primary" disabled>开始改进训练</button><button id="resetTrainingBase" class="quiet" disabled>使用初始模型</button></div>
@@ -109,5 +109,5 @@
 </dialog>
 <div id="toast" role="status"></div>
 <script src="./static/model-test-notice.js"></script>
-<script src="./static/platform.js?v=20261111improve"></script>
+<script src="./static/platform.js?v=20261111defaultmodel"></script>
 </body></html>
