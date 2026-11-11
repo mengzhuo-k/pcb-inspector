@@ -11,6 +11,7 @@ const state = {
   siteTemplate:null,siteDirty:false,editingSites:false,selectedSite:null,
   selectedSites:[],
   sitePopup:null,
+  models:[],modelSelection:null,modelsLoading:false,modelHistoryRequest:0,modelAction:false,
 }
 
 function toast(text, error=false){
@@ -1046,10 +1047,89 @@ window.addEventListener('beforeunload',event=>{
 
 function renderModelUpdate(data){
   const model=data.latest_model
+  const current=data.selection?.current_model
   $('latestModelLabel').title=''
-  $('latestModelLabel').textContent=model ? '最新模型 '+model.version : '尚未生成模型'
+  $('latestModelLabel').textContent=current ? '识别使用 '+current.version+(model && model.id!==current.id ? ' · 最新 '+model.version : '') : model ? '最新模型 '+model.version : '尚未生成模型'
   renderModelTestNotice(data.testing)
 }
+
+function renderModelHistory(){
+  const current=state.modelSelection?.current_model
+  const automatic=state.modelSelection?.mode!=='manual'
+  $('modelHistorySummary').textContent=(current ? '识别使用 '+current.version : '尚未启用模型')+' · '+state.models.length+' 个版本'
+  if(!state.modelAction) $('followLatestModel').checked=automatic
+  $('followLatestModel').disabled=state.modelAction || !state.modelSelection
+  $('modelSelectionHint').textContent=state.modelAction ? '正在处理模型…' : automatic ? '新模型训练完成后自动启用' : '已固定使用选定版本'
+  const list=$('modelHistoryList')
+  list.replaceChildren()
+  for(const model of state.models){
+    const row=document.createElement('div')
+    row.className='model-history-row'+(model.is_active ? ' current' : '')
+    row.dataset.modelId=model.id
+    const metrics=model.metrics || {}
+    const metric=typeof metrics.map50==='number' ? 'mAP50 '+(metrics.map50*100).toFixed(1)+'%' : typeof metrics.top1==='number' ? 'Top-1 '+(metrics.top1*100).toFixed(1)+'%' : '尚无有效验证指标'
+    const created=model.created && !Number.isNaN(Date.parse(model.created)) ? new Date(model.created).toLocaleString('zh-CN',{hour12:false}) : '未记录时间'
+    row.innerHTML='<div class="model-history-description"><strong>'+esc(model.version)+'</strong>'+(model.is_active ? '<span class="model-current-badge">使用中</span>' : '')+'<small>'+esc(created)+' · '+(model.template==='det' ? '缺陷检测' : '整板分类')+'</small></div><span class="model-history-metric">'+esc(model.weights_available ? metric : '权重文件不可用')+'</span>'
+    const actions=document.createElement('div')
+    actions.className='archive-actions'
+    const use=document.createElement('button')
+    const fixed=!automatic && current?.id===model.id
+    use.textContent=fixed ? '使用中' : model.is_active ? '固定此模型' : '用于识别'
+    use.disabled=state.modelAction || fixed || !model.weights_available || model.template!=='det'
+    use.className='quiet'
+    use.onclick=()=>changeModelSelection({model_id:model.id})
+    const remove=document.createElement('button')
+    remove.className='danger';remove.textContent='删除'
+    remove.disabled=state.modelAction || model.is_active
+    if(model.is_active) remove.title='请先切换到其他模型后再删除'
+    remove.onclick=()=>deleteHistoryModel(model)
+    actions.append(use,remove);row.append(actions);list.append(row)
+  }
+  if(!state.models.length) list.innerHTML='<p class="empty">尚无历史模型，训练完成后会自动记录在这里。</p>'
+}
+
+async function loadModelHistory(force=false){
+  if(!state.project || ((state.modelsLoading || state.modelAction) && !force)) return
+  const request=++state.modelHistoryRequest
+  state.modelsLoading=true
+  try{
+    const [models,selection]=await Promise.all([
+      api('/api/projects/'+state.project.id+'/models'),
+      api('/api/projects/'+state.project.id+'/model-selection'),
+    ])
+    if(request!==state.modelHistoryRequest) return
+    state.models=models;state.modelSelection=selection
+    renderModelHistory()
+  }finally{if(request===state.modelHistoryRequest) state.modelsLoading=false}
+}
+
+async function changeModelSelection(payload){
+  if(state.modelAction || !state.project) return
+  ++state.modelHistoryRequest;state.modelsLoading=false
+  state.modelAction=true;renderModelHistory()
+  try{
+    state.modelSelection=await api('/api/projects/'+state.project.id+'/model-selection',payload)
+    await loadModelHistory(true);await loadModelUpdate()
+    toast(payload.follow_latest ? '已恢复自动使用最新模型' : '已选择识别模型，识别系统会自动加载')
+  }catch(error){toast(error.message,true)}
+  finally{state.modelAction=false;renderModelHistory()}
+}
+
+async function deleteHistoryModel(model){
+  if(state.modelAction || model.is_active) return
+  if(!confirm('删除历史模型 '+model.version+'？训练图片和历史检验记录会保留。')) return
+  ++state.modelHistoryRequest;state.modelsLoading=false
+  state.modelAction=true;renderModelHistory()
+  try{
+    await api('/api/models/'+model.id,undefined,'DELETE')
+    await loadModelHistory(true);await loadModelUpdate()
+    toast('模型 '+model.version+' 已删除')
+  }catch(error){toast(error.message,true)}
+  finally{state.modelAction=false;renderModelHistory()}
+}
+
+$('followLatestModel').onchange=event=>changeModelSelection({follow_latest:event.target.checked})
+$('modelHistory').ontoggle=()=>{if($('modelHistory').open) loadModelHistory().catch(error=>toast(error.message,true))}
 
 async function loadModelUpdate(){
   if (!state.project || state.modelLoading) return
@@ -1125,8 +1205,10 @@ document.querySelectorAll('[data-img-filter]').forEach(button=>{
     }),3000)
     await refreshWorkspace()
     $('importTrainingImages').disabled=false
+    await loadModelHistory().catch(()=>{$('modelHistorySummary').textContent='暂时无法读取，展开后重试'})
     loadImportMode().catch(()=>{})
     setInterval(()=>loadImportMode().catch(()=>{}),5000)
     setInterval(()=>refreshImageLibrary().catch(error=>toast(error.message,true)),5000)
+    setInterval(()=>{if(!document.hidden && !state.modelAction) loadModelHistory().catch(()=>{})},5000)
   }catch(error){toast(error.message,true)}
 })()

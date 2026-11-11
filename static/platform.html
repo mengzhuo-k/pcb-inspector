@@ -3,7 +3,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>焊视 · 模型训练工作台</title>
 <link rel="stylesheet" href="./static/platform.css?v=20261111aq">
-<link rel="stylesheet" href="./static/workspace.css?v=3">
+<link rel="stylesheet" href="./static/workspace.css?v=4">
 </head><body class="training-page">
 <aside class="sidebar">
   <a class="brand" href="/static/index.html"><span class="brandmark">▦</span><span>焊视<small>PCB INSPECT</small></span></a>
@@ -23,7 +23,15 @@
 <header><span class="breadcrumb">质量管理 <span>/</span> 模型训练工作台</span><div class="headeractions"><span id="latestModelLabel" role="status">正在读取最新模型…</span><a class="btn" href="/static/index.html">返回识别系统</a></div></header>
 <main>
   <p id="modelTestNotice" role="alert" hidden></p>
-  <div class="heading"><div><h1>模型训练</h1><p>支持接收识别图片，也可直接导入训练图片。保存标注后，模型自动训练并更新。</p></div><div class="heading-actions"><span id="importModeBadge" class="sync-badge">正在读取入库设置</span><button id="importTrainingImages" class="primary" disabled>↑ 导入图片</button><input id="trainingFiles" type="file" accept="image/*" multiple hidden></div></div>
+  <div class="heading"><div><h1>模型训练</h1><p>支持接收识别图片或直接导入。保存标注后自动训练，历史模型可选择用于识别。</p></div><div class="heading-actions"><span id="importModeBadge" class="sync-badge">正在读取入库设置</span><button id="importTrainingImages" class="primary" disabled>↑ 导入图片</button><input id="trainingFiles" type="file" accept="image/*" multiple hidden></div></div>
+  <details id="modelHistory" class="model-history">
+    <summary><strong>历史模型</strong><span id="modelHistorySummary">正在读取模型版本…</span></summary>
+    <div class="model-history-body">
+      <div class="model-history-settings"><label class="inline-check"><input id="followLatestModel" type="checkbox" checked>自动使用最新模型</label><span id="modelSelectionHint" role="status"></span></div>
+      <div id="modelHistoryList" class="model-history-list"></div>
+      <p class="model-history-note">历史模型会一直保留，由你选择删除。手动选择后会固定使用该版本；使用中的模型需先切换到其他版本后再删除。</p>
+    </div>
+  </details>
     <div id="annotationWorkspace" class="label-layout">
       <aside class="image-browser">
         <div class="panelhead"><h2>训练图库</h2><span id="labelStats" class="muted">0 张图片</span></div>
@@ -97,5 +105,5 @@
 </dialog>
 <div id="toast" role="status"></div>
 <script src="./static/model-test-notice.js"></script>
-<script src="./static/platform.js?v=20261111dedup"></script>
+<script src="./static/platform.js?v=20261111history"></script>
 </body></html>

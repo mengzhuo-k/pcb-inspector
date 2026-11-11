@@ -101,14 +101,20 @@ def json_value(value, default=None):
         return default
 
 
-def deploy_updated_detector(conn, pid, mid, station):
+def deploy_updated_detector(conn, pid, mid, station, automatic=True):
+    selected=conn.execute("SELECT mode FROM project_model_selection WHERE project_id=?",(pid,)).fetchone()
+    if automatic and selected and selected[0]=='manual':
+        return False
     # The empty station supplies the detector to unassigned inspection stations.
-    for target in dict.fromkeys((station or "", "")):
+    targets=list(dict.fromkeys((station or "", "",*[r[0] for r in conn.execute(
+        "SELECT station FROM deployments WHERE project_id=? AND active=1",(pid,))])))
+    for target in targets:
         conn.execute("UPDATE deployments SET active=0 WHERE project_id=? AND station=? AND active=1",
                      (pid, target))
         conn.execute("INSERT INTO deployments(project_id,station,model_id,active,created) VALUES(?,?,?,1,?)",
                      (pid, target, mid, now()))
     conn.execute("UPDATE models SET published=1 WHERE id=?", (mid,))
+    return True
 
 
 def initialize() -> None:
@@ -171,6 +177,11 @@ def initialize() -> None:
             id TEXT PRIMARY KEY, project_id TEXT, job_id TEXT, version TEXT,
             sha256 TEXT, metrics TEXT, threshold REAL, weights TEXT,
             card TEXT, published INTEGER DEFAULT 0, created TEXT);
+        CREATE TABLE IF NOT EXISTS project_model_selection(
+            project_id TEXT PRIMARY KEY,mode TEXT NOT NULL DEFAULT 'automatic',
+            model_id TEXT,updated TEXT);
+        CREATE TABLE IF NOT EXISTS model_version_counters(
+            project_id TEXT PRIMARY KEY,next_version INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS deployments(
             id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT, station TEXT,
             model_id TEXT, active INTEGER DEFAULT 1, created TEXT);
@@ -973,11 +984,12 @@ def model_update_status(pid):
             sum(CASE WHEN review_status='approved' THEN 1 ELSE 0 END) AS saved
             FROM images WHERE project_id=?""", (pid,)).fetchone()
         job = conn.execute("SELECT state,error,model_id FROM jobs WHERE id=?", (update["job_id"],)).fetchone() if update else None
+        selection=selection_status(conn,pid)
     result = dict(update) if update else dict(state="waiting", message="上传图片并保存缺陷标注后自动更新模型")
     if job and job["state"] == "running":
         result["state"] = "running"
     result.update(testing=testing, latest_model=dict(latest) if latest else None,
-                  images=counts["total"], saved=counts["saved"] or 0)
+                  images=counts["total"], saved=counts["saved"] or 0,selection=selection)
     return jsonify(result)
 
 
@@ -1313,21 +1325,139 @@ def cancel_job(jid):
 
 # -------------------------------------------------------------------- models
 
+def model_version_floor(conn,pid):
+    highest=max((int(match.group(1)) for row in conn.execute("SELECT version FROM models WHERE project_id=?",(pid,))
+                 if (match:=re.fullmatch(r'v(\d+)',row[0] or ''))),default=0)
+    conn.execute("""INSERT INTO model_version_counters VALUES(?,?) ON CONFLICT(project_id)
+        DO UPDATE SET next_version=max(next_version,excluded.next_version)""",(pid,highest+1))
+    return conn.execute("SELECT next_version FROM model_version_counters WHERE project_id=?",(pid,)).fetchone()[0]
+
+
+def next_model_version(conn,pid):
+    number=model_version_floor(conn,pid)
+    while (MODELS/pid/f'v{number}'/'best.pt').exists():
+        number+=1
+    conn.execute("UPDATE model_version_counters SET next_version=? WHERE project_id=?",(number+1,pid))
+    return f'v{number}'
+
+
+def selection_status(conn,pid):
+    selected=conn.execute("SELECT * FROM project_model_selection WHERE project_id=?",(pid,)).fetchone()
+    current=conn.execute("""SELECT m.id,m.version FROM deployments d JOIN models m ON m.id=d.model_id
+        WHERE d.project_id=? AND d.active=1 ORDER BY (d.station='') DESC,d.id DESC LIMIT 1""",(pid,)).fetchone()
+    return dict(mode=selected['mode'] if selected else 'automatic',
+                current_model=dict(current) if current else None)
+
+
+def validate_selected_model(row):
+    if json_value(row['card'],{}).get('template','det')!='det':
+        abort(400,'当前识别系统只支持目标检测模型')
+    try:
+        path=Path(row['weights'])
+        digest=hashlib.sha256(path.read_bytes()).hexdigest()
+        if digest!=row['sha256']:
+            raise ValueError('权重校验失败')
+        from ultralytics import YOLO
+        candidate=YOLO(str(path))
+        if candidate.task!='detect' or not candidate.names:
+            raise ValueError('不是可用的目标检测模型')
+        result=candidate.predict(Image.new('RGB',(64,64)),imgsz=640,verbose=False)[0]
+        if result.boxes is None:
+            raise ValueError('模型未返回检测结果')
+        if hashlib.sha256(path.read_bytes()).hexdigest()!=digest:
+            raise ValueError('权重在检查期间发生变化')
+    except Exception as exc:
+        abort(400,'该模型无法用于识别：'+str(exc)[:200])
+
+
+@app.route('/api/projects/<pid>/model-selection',methods=['GET','POST'])
+def model_selection(pid):
+    project_row=project(pid)
+    if request.method=='GET':
+        with db() as conn:
+            return jsonify(selection_status(conn,pid))
+    payload=request.get_json(silent=True) or {}
+    if not isinstance(payload,dict):
+        abort(400,'模型选择设置无效')
+    automatic=payload.get('follow_latest')
+    if automatic is not None and not isinstance(automatic,bool):
+        abort(400,'自动启用设置无效')
+    with db() as conn:
+        if automatic is True:
+            rows=conn.execute('SELECT * FROM models WHERE project_id=? ORDER BY created DESC,rowid DESC',(pid,)).fetchall()
+            row=next((r for r in rows if json_value(r['card'],{}).get('template','det')=='det'),None)
+        else:
+            mid=payload.get('model_id')
+            if not mid and automatic is False:
+                current=selection_status(conn,pid)['current_model']
+                mid=current['id'] if current else None
+            row=conn.execute('SELECT * FROM models WHERE project_id=? AND id=?',(pid,mid)).fetchone()
+            if not row:
+                abort(404,'请选择本项目中存在的模型')
+    if row:
+        validate_selected_model(row)
+    with db() as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        if row:
+            current=conn.execute('SELECT * FROM models WHERE id=? AND project_id=?',(row['id'],pid)).fetchone()
+            if not current or (current['sha256'],current['weights'])!=(row['sha256'],row['weights']):
+                abort(409,'模型已变化或删除，请刷新模型列表')
+            deploy_updated_detector(conn,pid,row['id'],project_row['station'],automatic=False)
+        conn.execute("""INSERT INTO project_model_selection VALUES(?,?,?,?) ON CONFLICT(project_id)
+            DO UPDATE SET mode=excluded.mode,model_id=excluded.model_id,updated=excluded.updated""",
+            (pid,'automatic' if automatic is True else 'manual',None if automatic is True else row['id'],now()))
+        result=selection_status(conn,pid)
+    return jsonify(result)
+
 @app.get("/api/projects/<pid>/models")
 def list_models(pid):
     project(pid)
     with db() as conn:
-        rows = conn.execute("""SELECT m.*, d.station AS deployed_station
-            FROM models m LEFT JOIN deployments d ON d.model_id=m.id AND d.active=1
-            WHERE m.project_id=? ORDER BY m.created DESC""", (pid,)).fetchall()
+        rows = conn.execute("SELECT * FROM models WHERE project_id=? ORDER BY created DESC,rowid DESC", (pid,)).fetchall()
+        stations={}
+        for deployment in conn.execute("SELECT model_id,station FROM deployments WHERE project_id=? AND active=1",(pid,)):
+            stations.setdefault(deployment['model_id'],[]).append(deployment['station'])
     result = []
     for row in rows:
         item = dict(row)
         item["metrics"] = json_value(item.get("metrics"))
         item["card"] = json_value(item.get("card"))
-        item["template"] = (item["card"] or {}).get("template")
+        item["template"] = (item["card"] or {}).get("template",'det')
+        item['active_stations']=stations.get(item['id'],[])
+        item['is_active']=bool(item['active_stations'])
+        item['deployed_station']=item['active_stations'][0] if item['is_active'] else None
+        item['weights_available']=Path(item['weights'] or '').is_file()
         result.append(item)
     return jsonify(result)
+
+
+@app.delete('/api/models/<mid>')
+def delete_model(mid):
+    with db() as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        row=conn.execute('SELECT * FROM models WHERE id=?',(mid,)).fetchone()
+        if not row:
+            abort(404,'模型不存在或已删除')
+        if conn.execute('SELECT 1 FROM deployments WHERE model_id=? AND active=1',(mid,)).fetchone() or conn.execute(
+            "SELECT 1 FROM project_model_selection WHERE model_id=? AND mode='manual'",(mid,)).fetchone():
+            abort(409,'此模型正在用于识别，请先切换到其他模型后再删除')
+        path=Path(row['weights']).resolve() if row['weights'] else None
+        shared=conn.execute('SELECT 1 FROM models WHERE weights=? AND id!=?',(row['weights'],mid)).fetchone()
+        for job in conn.execute("SELECT config FROM jobs WHERE state IN ('queued','running')"):
+            config=json_value(job['config'],{})
+            if path and any(value and Path(str(value)).resolve()==path for value in (config.get('model'),config.get('baseline'))):
+                abort(409,'此模型正被训练任务使用，请等待任务结束后再删除')
+        model_version_floor(conn,row['project_id'])
+        conn.execute('DELETE FROM deployments WHERE model_id=?',(mid,))
+        conn.execute('DELETE FROM models WHERE id=?',(mid,))
+    removed=False
+    if path and path.is_relative_to(MODELS.resolve()) and not shared:
+        try:
+            path.unlink(missing_ok=True)
+            removed=True
+        except OSError:
+            app.logger.exception('模型记录已删除，但权重文件未能清理：%s',mid)
+    return jsonify(deleted=mid,weights_removed=removed)
 
 
 @app.get("/api/models/<mid>")
@@ -1731,8 +1861,7 @@ def run_job(jid: str) -> None:
             conn.execute("BEGIN IMMEDIATE")
             if conn.execute("SELECT state FROM jobs WHERE id=?", (jid,)).fetchone()[0] != "running":
                 return
-            count = conn.execute("SELECT count(*) FROM models WHERE project_id=?", (job["project_id"],)).fetchone()[0]
-            version = f"v{count+1}"
+            version = next_model_version(conn,job['project_id'])
             mid = uuid.uuid4().hex
             folder = MODELS / job["project_id"] / version
             folder.mkdir(parents=True, exist_ok=True)
