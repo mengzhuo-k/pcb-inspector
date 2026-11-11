@@ -102,8 +102,10 @@ def json_value(value, default=None):
 
 
 def deploy_updated_detector(conn, pid, mid, station, automatic=True):
-    selected=conn.execute("SELECT mode FROM project_model_selection WHERE project_id=?",(pid,)).fetchone()
-    if automatic and selected and selected[0]=='manual':
+    selected=conn.execute("SELECT model_id FROM project_model_selection WHERE project_id=?",(pid,)).fetchone()
+    active=conn.execute("SELECT 1 FROM deployments WHERE project_id=? AND active=1",(pid,)).fetchone()
+    # Training may bootstrap the first detector, but never replace an existing default.
+    if automatic and ((selected and selected[0]) or active):
         return False
     # The empty station supplies the detector to unassigned inspection stations.
     targets=list(dict.fromkeys((station or "", "",*[r[0] for r in conn.execute(
@@ -114,6 +116,8 @@ def deploy_updated_detector(conn, pid, mid, station, automatic=True):
         conn.execute("INSERT INTO deployments(project_id,station,model_id,active,created) VALUES(?,?,?,1,?)",
                      (pid, target, mid, now()))
     conn.execute("UPDATE models SET published=1 WHERE id=?", (mid,))
+    conn.execute('''INSERT INTO project_model_selection VALUES(?,'manual',?,?) ON CONFLICT(project_id)
+        DO UPDATE SET mode='manual',model_id=excluded.model_id,updated=excluded.updated''',(pid,mid,now()))
     return True
 
 
@@ -178,7 +182,7 @@ def initialize() -> None:
             sha256 TEXT, metrics TEXT, threshold REAL, weights TEXT,
             card TEXT, published INTEGER DEFAULT 0, created TEXT);
         CREATE TABLE IF NOT EXISTS project_model_selection(
-            project_id TEXT PRIMARY KEY,mode TEXT NOT NULL DEFAULT 'automatic',
+            project_id TEXT PRIMARY KEY,mode TEXT NOT NULL DEFAULT 'manual',
             model_id TEXT,updated TEXT);
         CREATE TABLE IF NOT EXISTS project_training_base(
             project_id TEXT PRIMARY KEY,model_id TEXT NOT NULL,updated TEXT);
@@ -192,6 +196,15 @@ def initialize() -> None:
             note TEXT, state TEXT DEFAULT 'open', image_id TEXT, created TEXT);
         """)
         conn.execute("BEGIN IMMEDIATE")
+        # Preserve the currently deployed version when upgrading old follow-latest settings.
+        for pid, in conn.execute('SELECT DISTINCT project_id FROM deployments WHERE active=1').fetchall():
+            current=conn.execute('''SELECT m.id FROM deployments d JOIN models m ON m.id=d.model_id
+                WHERE d.project_id=? AND d.active=1 ORDER BY (d.station='') DESC,d.id DESC LIMIT 1''',(pid,)).fetchone()
+            if current:
+                conn.execute('''INSERT INTO project_model_selection VALUES(?,'manual',?,?) ON CONFLICT(project_id)
+                    DO UPDATE SET mode='manual',model_id=excluded.model_id,updated=excluded.updated
+                    WHERE project_model_selection.mode!='manual' ''',(pid,current[0],now()))
+        conn.execute("UPDATE project_model_selection SET mode='manual' WHERE mode!='manual'")
         columns = {row[1] for row in conn.execute("PRAGMA table_info(labels)")}
         if "polygon" not in columns:
             conn.execute("ALTER TABLE labels ADD COLUMN polygon TEXT DEFAULT '[]'")
@@ -1358,10 +1371,9 @@ def next_model_version(conn,pid):
 
 
 def selection_status(conn,pid):
-    selected=conn.execute("SELECT * FROM project_model_selection WHERE project_id=?",(pid,)).fetchone()
     current=conn.execute("""SELECT m.id,m.version FROM deployments d JOIN models m ON m.id=d.model_id
         WHERE d.project_id=? AND d.active=1 ORDER BY (d.station='') DESC,d.id DESC LIMIT 1""",(pid,)).fetchone()
-    return dict(mode=selected['mode'] if selected else 'automatic',
+    return dict(mode='manual',
                 current_model=dict(current) if current else None)
 
 
@@ -1433,23 +1445,23 @@ def model_selection(pid):
     payload=request.get_json(silent=True) or {}
     if not isinstance(payload,dict):
         abort(400,'模型选择设置无效')
-    automatic=payload.get('follow_latest')
-    if automatic is not None and not isinstance(automatic,bool):
-        abort(400,'自动启用设置无效')
+    legacy_toggle=payload.get('follow_latest')
+    if legacy_toggle is not None and not isinstance(legacy_toggle,bool):
+        abort(400,'默认模型设置无效')
     with db() as conn:
-        if automatic is True:
-            rows=conn.execute('SELECT * FROM models WHERE project_id=? ORDER BY created DESC,rowid DESC',(pid,)).fetchall()
-            row=next((r for r in rows if json_value(r['card'],{}).get('template','det')=='det'),None)
-        else:
-            mid=payload.get('model_id')
-            if not mid and automatic is False:
-                current=selection_status(conn,pid)['current_model']
-                mid=current['id'] if current else None
-            row=conn.execute('SELECT * FROM models WHERE project_id=? AND id=?',(pid,mid)).fetchone()
-            if not row:
-                abort(404,'请选择本项目中存在的模型')
-    if row:
-        validate_selected_model(row)
+        mid=payload.get('model_id')
+        # Cached clients can only pin the current version; their old toggle cannot select latest.
+        if not mid and legacy_toggle is not None:
+            current=selection_status(conn,pid)['current_model']
+            mid=current['id'] if current else None
+        if not mid:
+            abort(400,'请先选择一个历史模型作为默认模型')
+        if not isinstance(mid,str):
+            abort(400,'默认模型设置无效')
+        row=conn.execute('SELECT * FROM models WHERE project_id=? AND id=?',(pid,mid)).fetchone()
+        if not row:
+            abort(404,'请选择本项目中存在的模型')
+    validate_selected_model(row)
     with db() as conn:
         conn.execute('BEGIN IMMEDIATE')
         if row:
@@ -1457,9 +1469,6 @@ def model_selection(pid):
             if not current or (current['sha256'],current['weights'])!=(row['sha256'],row['weights']):
                 abort(409,'模型已变化或删除，请刷新模型列表')
             deploy_updated_detector(conn,pid,row['id'],project_row['station'],automatic=False)
-        conn.execute("""INSERT INTO project_model_selection VALUES(?,?,?,?) ON CONFLICT(project_id)
-            DO UPDATE SET mode=excluded.mode,model_id=excluded.model_id,updated=excluded.updated""",
-            (pid,'automatic' if automatic is True else 'manual',None if automatic is True else row['id'],now()))
         result=selection_status(conn,pid)
     return jsonify(result)
 

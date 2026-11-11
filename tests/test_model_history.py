@@ -53,7 +53,7 @@ class ModelHistoryTests(unittest.TestCase):
 
     def activate(self, mid):
         with platform.db() as conn:
-            platform.deploy_updated_detector(conn, self.pid, mid, 'S1')
+            platform.deploy_updated_detector(conn, self.pid, mid, 'S1',automatic=False)
 
     def test_history_is_unique_and_manual_choice_persists_across_training_and_restart(self):
         old, _ = self.model('v1')
@@ -77,14 +77,17 @@ class ModelHistoryTests(unittest.TestCase):
         runtime = PlatformRuntime(platform.DB, factory=Detector)
         self.assertEqual(runtime.status('S1', self.pid)['version'], 'v1')
         response = self.client.post(self.selection, json={'follow_latest': True})
-        self.assertEqual(response.json['current_model']['id'], new)
-        self.assertEqual(response.json['mode'], 'automatic')
+        self.assertEqual(response.json['current_model']['id'], old)
+        self.assertEqual(response.json['mode'], 'manual')
+        self.assertEqual(runtime.status('S1', self.pid)['version'], 'v1')
+        # Only explicit selection can change the default; a legacy toggle cannot choose latest.
+        self.client.post(self.selection,json={'model_id':new})
         self.assertEqual(runtime.status('S1', self.pid)['version'], 'v3')
         newer, _ = self.model('v4')
         with platform.db() as conn:
-            self.assertTrue(platform.deploy_updated_detector(conn, self.pid, newer, 'S1'))
+            self.assertFalse(platform.deploy_updated_detector(conn, self.pid, newer, 'S1'))
         response = self.client.post(self.selection, json={'follow_latest': False})
-        self.assertEqual(response.json['current_model']['id'], newer)
+        self.assertEqual(response.json['current_model']['id'], new)
         self.assertEqual(response.json['mode'], 'manual')
 
     def test_switch_updates_all_project_stations_and_default(self):
@@ -114,7 +117,7 @@ class ModelHistoryTests(unittest.TestCase):
         with patch.object(Detector, 'task', 'classify'):
             self.assertEqual(self.client.post(self.selection, json={'model_id': valid}).status_code, 400)
         self.assertEqual(self.client.get(self.selection).json['current_model']['id'], current)
-        self.assertEqual(self.client.get(self.selection).json['mode'], 'automatic')
+        self.assertEqual(self.client.get(self.selection).json['mode'], 'manual')
         other = self.client.post('/api/projects', json={'name': 'other'}).json['id']
         self.assertEqual(self.client.post(f'/api/projects/{other}/model-selection', json={'model_id': current}).status_code, 404)
         self.assertEqual(self.client.post(self.selection, json={'follow_latest': 'yes'}).status_code, 400)
@@ -153,15 +156,41 @@ class ModelHistoryTests(unittest.TestCase):
         self.assertEqual(self.client.delete('/api/models/' + external).status_code, 200)
         self.assertTrue(external_path.exists())
 
-    def test_no_models_automatic_mode_and_version_skips_existing_file(self):
+    def test_no_models_require_explicit_selection_and_version_skips_existing_file(self):
+        self.assertEqual(self.client.get(self.selection).json,{'mode':'manual','current_model':None})
         response = self.client.post(self.selection, json={'follow_latest': True})
-        self.assertEqual(response.json, {'mode': 'automatic', 'current_model': None})
+        self.assertEqual(response.status_code,400)
         path = platform.MODELS / self.pid / 'v1' / 'best.pt'
         path.parent.mkdir(parents=True)
         path.write_bytes(b'orphaned weight')
         with platform.db() as conn:
             self.assertEqual(platform.next_model_version(conn, self.pid), 'v2')
         self.assertEqual(path.read_bytes(), b'orphaned weight')
+
+    def test_legacy_follow_latest_settings_migrate_to_current_version_without_switching(self):
+        current,_=self.model('v1')
+        self.activate(current)
+        newer,_=self.model('v2')
+        with platform.db() as conn:
+            conn.execute("UPDATE project_model_selection SET mode='automatic',model_id=NULL WHERE project_id=?",(self.pid,))
+            self.assertFalse(platform.deploy_updated_detector(conn,self.pid,newer,'S1'))
+        platform.initialize()
+        self.assertEqual(self.client.get(self.selection).json,{
+            'mode':'manual','current_model':{'id':current,'version':'v1'}})
+        with platform.db() as conn:
+            selection=conn.execute('SELECT mode,model_id FROM project_model_selection WHERE project_id=?',(self.pid,)).fetchone()
+            self.assertEqual(tuple(selection),('manual',current))
+        self.assertEqual(self.client.post(self.selection,json={'follow_latest':True}).json['current_model']['id'],current)
+
+    def test_first_detector_is_default_and_subsequent_training_cannot_replace_it(self):
+        first,_=self.model('v1')
+        with platform.db() as conn:
+            self.assertTrue(platform.deploy_updated_detector(conn,self.pid,first,'S1'))
+        second,_=self.model('v2')
+        with platform.db() as conn:
+            self.assertFalse(platform.deploy_updated_detector(conn,self.pid,second,'S1'))
+        self.assertEqual(self.client.get(self.selection).json['current_model']['id'],first)
+        self.assertEqual(len(self.client.get(f'/api/projects/{self.pid}/models').json),2)
 
     def dataset(self):
         """A small real, frozen dataset with independent positive images."""

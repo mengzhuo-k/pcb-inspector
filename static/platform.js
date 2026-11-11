@@ -1048,10 +1048,9 @@ window.addEventListener('beforeunload',event=>{
 
 function renderModelUpdate(data){
   state.modelUpdate=data
-  const model=data.latest_model
   const current=data.selection?.current_model
   $('latestModelLabel').title=''
-  $('latestModelLabel').textContent=current ? '识别使用 '+current.version+(model && model.id!==current.id ? ' · 最新 '+model.version : '') : model ? '最新模型 '+model.version : '尚未生成模型'
+  $('latestModelLabel').textContent=current ? '默认模型 '+current.version : '尚未设置默认模型'
   renderModelTestNotice(data.testing)
   renderModelImprovement()
 }
@@ -1070,11 +1069,23 @@ function renderModelImprovement(){
 
 function renderModelHistory(){
   const current=state.modelSelection?.current_model
-  const automatic=state.modelSelection?.mode!=='manual'
   $('modelHistorySummary').textContent=(current ? '识别使用 '+current.version : '尚未启用模型')+' · '+state.models.length+' 个版本'
-  if(!state.modelAction) $('followLatestModel').checked=automatic
-  $('followLatestModel').disabled=state.modelAction || !state.modelSelection
-  $('modelSelectionHint').textContent=state.modelAction ? '正在处理模型…' : automatic ? '新模型训练完成后自动启用' : '已固定使用选定版本'
+  const selector=$('defaultModelSelect')
+  const candidates=state.models.filter(model=>model.template==='det')
+  const optionsKey=JSON.stringify(candidates.map(model=>[model.id,model.version,model.weights_available]))
+  if(selector.dataset.optionsKey!==optionsKey){
+    selector.replaceChildren(new Option('请选择历史模型',''))
+    selector.options[0].disabled=true
+    for(const model of candidates){
+      const option=new Option(model.version+(model.weights_available ? '' : '（文件不可用）'),model.id)
+      option.disabled=!model.weights_available
+      selector.append(option)
+    }
+    selector.dataset.optionsKey=optionsKey
+  }
+  if(!state.modelAction) selector.value=current?.id || ''
+  selector.disabled=state.modelAction || !state.modelSelection || !candidates.some(model=>model.weights_available)
+  $('modelSelectionHint').textContent=state.modelAction ? '正在处理模型…' : current ? '已固定使用 '+current.version+'，新训练版本不会自动替换' : '请选择一个历史模型作为默认模型'
   const list=$('modelHistoryList')
   list.replaceChildren()
   for(const model of state.models){
@@ -1089,8 +1100,8 @@ function renderModelHistory(){
     const actions=document.createElement('div')
     actions.className='archive-actions'
     const use=document.createElement('button')
-    const fixed=!automatic && current?.id===model.id
-    use.textContent=fixed ? '使用中' : model.is_active ? '固定此模型' : '用于识别'
+    const fixed=current?.id===model.id
+    use.textContent=fixed ? '默认使用中' : '设为默认'
     use.disabled=state.modelAction || fixed || !model.weights_available || model.template!=='det'
     use.className='quiet'
     use.onclick=()=>changeModelSelection({model_id:model.id})
@@ -1133,7 +1144,7 @@ async function changeModelSelection(payload){
   try{
     state.modelSelection=await api('/api/projects/'+state.project.id+'/model-selection',payload)
     await loadModelHistory(true);await loadModelUpdate()
-    toast(payload.follow_latest ? '已启用默认使用模型' : '已选择识别模型，识别系统会自动加载')
+    toast('已将 '+state.modelSelection.current_model.version+' 设为默认模型')
   }catch(error){toast(error.message,true)}
   finally{state.modelAction=false;renderModelHistory()}
 }
@@ -1176,7 +1187,7 @@ $('startModelImprovement').onclick=async()=>{
   finally{state.modelAction=false;renderModelHistory()}
 }
 
-$('followLatestModel').onchange=event=>changeModelSelection({follow_latest:event.target.checked})
+$('defaultModelSelect').onchange=event=>{if(event.target.value) changeModelSelection({model_id:event.target.value})}
 $('modelHistory').ontoggle=()=>{if($('modelHistory').open) loadModelHistory().catch(error=>toast(error.message,true))}
 
 async function loadModelUpdate(){

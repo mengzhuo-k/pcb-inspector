@@ -90,6 +90,7 @@ article,.panel,.editor{background:#fff;border:1px solid var(--border);border-rad
 .model-history>summary strong{font-size:14px}.model-history>summary span{font-size:11px;color:#7b889d;margin-left:auto}
 .model-history-body{padding:0 18px 16px}.model-history-settings{display:flex;align-items:center;flex-wrap:wrap;gap:14px;border-top:1px solid var(--border);padding:14px 0}
 .model-history-settings span,.model-history-note{font-size:11px;color:#8a98ad}
+.model-history-settings select{min-width:130px;max-width:220px;padding:6px 10px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--text)}
 .model-history-list{max-height:330px;overflow:auto;border-top:1px solid var(--border)}
 .model-history-row{display:grid;grid-template-columns:minmax(180px,1fr) minmax(140px,1fr) auto;align-items:center;gap:16px;padding:12px 6px;border-bottom:1px solid var(--border)}
 .model-history-row.current{background:#f5f8ff}.model-history-description strong{font-size:13px}.model-history-description small{display:block;margin-top:4px;font-size:10px}
