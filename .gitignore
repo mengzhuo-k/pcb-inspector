@@ -1,16 +1,17 @@
+# Local virtualenv (recreatable from requirements.txt; contains files >100 MB)
 .venv/
+
+# Python bytecode
 __pycache__/
 *.py[cod]
-data/
-runs/
-*.pt
-*.onnx
-*.sqlite*
-*.db
+
+# Local config
 .env
 .env.*
-*.log
-*.zip
-training/missing_connection/
-training/solder_bridge/
-*.cache
+
+# Files above GitHub's 100 MB per-file limit, published as GitHub Release assets instead
+/data.zip
+/data/learning.zip
+/data/records.sqlite
+/data/datasets/smd_defdb/dataset.tar
+/data/datasets/smd_defdb/PCB_augmented.rar
