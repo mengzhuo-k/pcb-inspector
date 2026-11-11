@@ -58,17 +58,15 @@ function renderBatch(batch) {
   document.querySelector('.sampling').hidden=readonly
   $('drawSample').disabled = readonly || !['ready','reviewing'].includes(batch.state) || !s.auto_passed
   $('finishBatch').hidden = readonly
-  $('reinspectBatch').hidden=!['ready','reviewing','completed'].includes(batch.state) || !batch.items.some(item=>item.record_id || item.retryable)
-  $('reinspectBatch').disabled=batchUploading
   $('finishBatch').disabled = !['ready','reviewing'].includes(batch.state) || batchUploading
-  $('batchActions').hidden=['resumeImport','retryBatch','reinspectBatch','finishBatch'].every(id=>$(id).hidden)
+  $('batchActions').hidden=['resumeImport','retryBatch','finishBatch'].every(id=>$(id).hidden)
   const reference=batch.inspection_context?.reference
   const aligned=batch.items.filter(item=>item.alignment).length
   const templated=batch.items.filter(item=>item.inspection?.mode==='solder_sites').length
   $('batchAlignmentStatus').textContent=reference
     ? '标准图 '+reference.id.slice(0,8)+(reference.sites ? ' · 模板 v'+reference.template_revision+'（'+reference.sites.length+' 个点位）' : ' · 未配置点位模板')+' · 已矫正 '+aligned+' 张 · 已应用模板 '+templated+' 张'
     : batch.inspection_context ? '未配置标准图，当前批次使用整板检测。请先在模型训练中设置标准图和点位模板。'
-    : '旧批次未记录当前模板应用状态。点击“重新矫正并应用当前模板”可从原图重新检测。'
+    : '旧批次未记录当前模板应用状态，点击图片可进入采集检测，按当前模板重新识别。'
   const rate = value=>value === null ? '—' : value.toFixed(1)+'%'
   $('batchNumbers').innerHTML = [
     ['已检测图片',s.completed+' / '+s.total,''],
@@ -250,19 +248,6 @@ $('resumeFiles').onchange = async e=>{
 $('retryBatch').onclick=async()=>{
   try {await batchApi('/api/batches/'+activeBatchId+'/retry');await openBatch(activeBatchId)}
   catch(err) {message(err.message)}
-}
-$('reinspectBatch').onclick=async()=>{
-  if (!activeBatchId || batchUploading) return
-  if (!confirm('使用模型训练平台当前标准图和点位模板，从原图重新检测整批图片？结果会保存为一个新批次，原批次及归档保留。')) return
-  $('reinspectBatch').disabled=true
-  try{
-    const batch=await batchApi('/api/batches/'+activeBatchId+'/reinspect')
-    batchOrigin='processing';galleryFilter='all'
-    switchPage('batch')
-    await openBatch(batch.id)
-    await refreshWorkspace()
-    message('已从原图开始重新矫正并应用当前点位模板。')
-  }catch(error){message(error.message);$('reinspectBatch').disabled=false}
 }
 $('sampleMode').onchange=()=>{
   $('sampleValue').max=$('sampleMode').value==='percent' ? '100' : '200'
