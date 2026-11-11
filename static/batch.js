@@ -80,7 +80,7 @@ function renderBatch(batch) {
   $('batchAlignmentStatus').textContent=reference
     ? '标准图 '+reference.id.slice(0,8)+(reference.sites ? ' · 模板 v'+reference.template_revision+'（'+reference.sites.length+' 个点位）' : ' · 未配置点位模板')+' · 已矫正 '+aligned+' 张 · 已应用模板 '+templated+' 张'
     : batch.inspection_context ? '未配置标准图，当前批次使用整板检测。请先在模型训练中设置标准图和点位模板。'
-    : '旧批次未记录当前模板应用状态，点击图片可进入采集检测，按当前模板重新识别。'
+    : '旧批次未记录模板应用状态，点击图片可进入采集检测查看保存的图片和识别结果。'
   const rate = value=>value === null ? '—' : value.toFixed(1)+'%'
   $('batchNumbers').innerHTML = [
     ['已检测图片',s.completed+' / '+s.total,''],
@@ -140,7 +140,7 @@ function renderGallery() {
     card.disabled = !item.record_id && !item.retryable
     const sampledReview = item.sampled && item.revision > item.sample_revision
     const sampleBadge = item.sampled ? '<span class="sample-badge">抽样 · '+(sampledReview ? '已复查' : '待复查')+'</span>' : ''
-    const preview = item.record_id ? '<img loading="lazy" src="/api/records/'+item.record_id+'/image" alt="'+esc(item.filename)+'">' : item.retryable ? '<img loading="lazy" src="/api/batches/'+activeBatch.id+'/items/'+item.ordinal+'/image" alt="'+esc(item.filename)+'">' : '<span class="no-preview">'+stateLabels[item.state]+'</span>'
+    const preview = item.record_id ? '<img loading="lazy" src="/api/records/'+item.record_id+'/image?marked=1" alt="'+esc(item.filename)+'">' : item.retryable ? '<img loading="lazy" src="/api/batches/'+activeBatch.id+'/items/'+item.ordinal+'/image" alt="'+esc(item.filename)+'">' : '<span class="no-preview">'+stateLabels[item.state]+'</span>'
     const state = item.state === 'done' ? item.decision : stateLabels[item.state]
     const identification = item.classification?.is_defect
       ? ' · 整板 '+esc(item.classification.label)+' '+Math.round(item.classification.score*100)+'%'
@@ -166,7 +166,7 @@ async function inspectBatchImage(batch,item){
     $('inspect').elements.batch.value=batch.name
     $('inspect').elements.note.value=''
     switchPage('work')
-    await selectImage(new File([blob],item.filename,{type:blob.type}),'批次原图重新检测',{previewOnly:true})
+    await selectImage(new File([blob],item.filename,{type:blob.type}),'待检测批次图片',{previewOnly:true})
     $('viewingFile').textContent='#'+String(item.ordinal+1).padStart(3,'0')+' · '+item.filename
     $('backToBatch').hidden=false;$('backToBatch').textContent='← 返回检测任务'
     $('backToBatch').onclick=async()=>{switchPage('batch');await openBatch(batch.id)}
@@ -179,7 +179,7 @@ async function updateReviewNavigation(record) {
   if (!record.batch_id) return
   try {
     if (activeBatch?.id !== record.batch_id) await openBatch(record.batch_id)
-    if ((currentRecordId || currentSourceRecordId) !== record.id) return
+    if (currentRecordId !== record.id) return
     if (!reviewIds.includes(record.id)) {
       reviewIds = activeBatch.items.filter(item=>item.state==='done').map(item=>item.record_id)
     }
@@ -358,7 +358,7 @@ function renderRejectedList() {
     const row = document.createElement('div')
     row.className='rejected-row'
     row.dataset.recordId=item.record_id
-    row.innerHTML='<img loading="lazy" src="/api/records/'+item.record_id+'/image" alt="'+esc(item.filename)+'"><div><strong>'+esc(item.batch_name)+' <span class="serial">#'+String(item.ordinal+1).padStart(3,'0')+'</span></strong><p>'+esc(item.filename)+'</p><small>'+esc(item.station)+' · '+item.count+' 个候选'+(item.classification?.is_defect ? ' · 整板 '+esc(item.classification.label)+' '+Math.round(item.classification.score*100)+'%' : '')+(item.completed_at ? ' · 归档于 '+date(item.completed_at) : '')+'</small></div><span class="tag" data-state="'+esc(item.decision)+'">'+esc(item.decision)+'</span><button>查看图片 →</button>'
+    row.innerHTML='<img loading="lazy" src="/api/records/'+item.record_id+'/image?marked=1" alt="'+esc(item.filename)+'"><div><strong>'+esc(item.batch_name)+' <span class="serial">#'+String(item.ordinal+1).padStart(3,'0')+'</span></strong><p>'+esc(item.filename)+'</p><small>'+esc(item.station)+' · '+item.count+' 个候选'+(item.classification?.is_defect ? ' · 整板 '+esc(item.classification.label)+' '+Math.round(item.classification.score*100)+'%' : '')+(item.completed_at ? ' · 归档于 '+date(item.completed_at) : '')+'</small></div><span class="tag" data-state="'+esc(item.decision)+'">'+esc(item.decision)+'</span><button>查看图片 →</button>'
     const actions=document.createElement('div')
     actions.className='archive-actions'
     actions.append(row.lastElementChild)
@@ -379,7 +379,7 @@ function renderRejectedList() {
     const thumbnail=row.querySelector('img')
     thumbnail.onclick=openImage;thumbnail.style.cursor='pointer'
     thumbnail.tabIndex=0;thumbnail.setAttribute('role','button')
-    thumbnail.setAttribute('aria-label','在采集检测中重新识别 '+item.filename)
+    thumbnail.setAttribute('aria-label','在采集检测中查看已保存的识别结果 '+item.filename)
     thumbnail.onkeydown=event=>{if(event.key==='Enter' || event.key===' '){event.preventDefault();openImage()}}
     $('rejectedList').append(row)
   }

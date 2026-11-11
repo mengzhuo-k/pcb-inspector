@@ -494,6 +494,34 @@ class BatchTests(unittest.TestCase):
 
 
 class InspectionAlignmentTests(unittest.TestCase):
+    def test_marked_thumbnail_uses_saved_corrected_image_without_inference_or_mutation(self):
+        client=app.app.test_client()
+        boxes=app.Detection([dict(key='missing_connection',label='疑似漏焊',score=.8,
+                                 site_id='H01',rect=[.2,.3,.4,.5])],'v-saved','sha')
+        boxes.image=Image.new('RGB',(320,180),(20,90,60))
+        boxes.original_image=Image.new('RGB',(180,320),(90,20,60))
+        boxes.alignment=dict(reference_id='saved-reference')
+        boxes.inspection=dict(mode='solder_sites',checked_sites=26,total_sites=26,
+            sites=[dict(id='H01',rect=[.2,.3,.4,.5])])
+        with app.db() as conn:
+            rid=app.save_record(conn,boxes.original_image,boxes,'QA','Saved result')
+        before=client.get('/api/records/'+rid).json
+        plain=client.get('/api/records/'+rid+'/image').data
+        with patch.object(app,'detect',side_effect=AssertionError('saved images must not be inferred again')):
+            marked=client.get('/api/records/'+rid+'/image?marked=1')
+        self.assertEqual(marked.status_code,200)
+        self.assertEqual(client.get('/api/records/'+rid+'/image?marked=1',headers={
+            'If-None-Match':marked.headers['ETag']}).status_code,304)
+        with Image.open(io.BytesIO(marked.data)) as image,Image.open(io.BytesIO(plain)) as saved:
+            self.assertEqual(image.size,(320,180))
+            self.assertGreater(image.getpixel((75,54))[0],saved.getpixel((75,54))[0]+40)
+            # Interior pixels retain the corrected board rather than the portrait original.
+            self.assertLess(abs(image.getpixel((250,100))[1]-saved.getpixel((250,100))[1]),5)
+        original=client.get('/api/records/'+rid+'/image?original=1').data
+        self.assertEqual(client.get('/api/records/'+rid+'/image?original=1&marked=1').data,original)
+        self.assertEqual(client.get('/api/records/'+rid+'/image').data,plain)
+        self.assertEqual(client.get('/api/records/'+rid).json,before)
+
     def test_process_parameters_auto_form_and_signature(self):
         client = app.app.test_client()
         with patch.object(app, "detect", return_value=app.Detection([], "v-test", "sha", classification={"is_defect":False})):

@@ -6,7 +6,7 @@ let currentClassification = null
 let currentInspection = null
 let inspectionInput = null
 let currentReadOnly = false
-let currentSourceRecordId=null,activeStoredRecord=null,storedImageRequest=0
+let storedImageRequest=0
 let inspectionFilename = "inspection.jpg"
 const date = value => new Date(value).toLocaleString('zh-CN', {hour12:false})
 const selectedTargets = new Set()
@@ -198,7 +198,7 @@ $('clearTargets').onclick = () => {
 $('overlays').onclick = () => {
   overlaysVisible = !overlaysVisible
   $('overlays').setAttribute('aria-pressed',String(overlaysVisible))
-  $('overlays').textContent = overlaysVisible ? '标注已开启' : '正在查看原图'
+  $('overlays').textContent = overlaysVisible ? '标注已开启' : '标注已关闭'
   draw()
 }
 $('expand').onclick = async () => {
@@ -208,34 +208,29 @@ $('expand').onclick = async () => {
   } catch (err) { message('当前浏览器无法全屏显示：'+err.message) }
 }
 document.addEventListener('fullscreenchange',draw)
-async function selectImage(input, source, options={}) {
-  stopCamera()
-  if (!options.stored) ++storedImageRequest
-  const token=version
+function resetCaptureView(){
   currentRecordId = null
   currentReadOnly=false
   $('inspect').inert=false
   $('run').hidden=false
+  $('run').disabled=false
   document.querySelector('#work .toolbar').hidden=false
-  activeStoredRecord=options.stored || null
-  currentSourceRecordId=activeStoredRecord?.record.id || null
-  reviewOrigin=activeStoredRecord?.origin || 'work'
-  $('backToBatch').hidden=!activeStoredRecord
-  $('savedRecordAction').hidden=!activeStoredRecord
+  reviewOrigin='work'
+  $('backToBatch').hidden=true
   $('previousImage').hidden=true;$('nextImage').hidden=true
-  $('savedRecordAction').textContent='查看原检验单'
-  if (activeStoredRecord){
-    const context=activeStoredRecord
-    $('savedRecordAction').onclick=()=>present(context.record)
-    $('backToBatch').textContent=context.origin==='batch' ? '← 返回检测任务' : context.origin==='rejected' ? '← 返回不合格产品' : '← 返回质量档案'
-    $('backToBatch').onclick=async()=>{
-      switchPage(context.origin==='batch' ? 'batch' : context.origin)
-      if (context.origin==='batch') await openBatch(context.record.batch_id)
-      else await refreshWorkspace()
-    }
-  }
+  $('title').textContent='采集检测'
+  $('pageDescription').textContent='采集板面图像，自动分析缺陷并生成检验单'
+  inspectionInput=null
+}
+
+async function selectImage(input, source, options={}) {
+  stopCamera()
+  ++storedImageRequest
+  const token=version
+  resetCaptureView()
   inspectionInput = input
   inspectionFilename=input instanceof File ? input.name : 'inspection.jpg'
+  $('viewingFile').textContent=input instanceof File ? input.name : ''
   $('alignmentStatus').hidden=true
   showImage(input, [], source, null)
   $('result').replaceChildren()
@@ -263,19 +258,11 @@ async function inspectStoredRecord(id,origin,ids){
   try{
     const record=await api((origin==='rejected' ? '/api/exceptions/' : '/api/records/')+id)
     if (requestId!==storedImageRequest) return
-    if (record.alignment && record.original_available===0) throw Error('原检验单缺少原图，请重新上传原始图片进行矫正')
-    const response=await fetch('/api/records/'+id+'/image?original=1')
-    if (!response.ok) throw Error('无法读取原图，请重新打开图片')
-    const blob=await response.blob()
-    if (requestId!==storedImageRequest) return
-    for (const field of ['station','batch','note']) $('inspect').elements[field].value=record[field] || ''
-    $('stationName').textContent=record.station
     if (ids) reviewIds=ids
+    reviewOrigin=origin
     switchPage('work')
-    await selectImage(new File([blob],record.filename || 'inspection.jpg',{type:blob.type}),
-      '原图重新检测',{previewOnly:true,stored:{record,origin}})
-    if (requestId!==storedImageRequest) return
-    await updateReviewNavigation(record)
+    present(record)
+    message('已载入保存的板面图片和识别结果。')
     $('viewer').scrollIntoView({behavior:'smooth',block:'start'})
   }catch(error){if(requestId===storedImageRequest) message(error.message)}
 }
@@ -304,6 +291,10 @@ $('camera').onclick = async () => {
     stream = media
     $('video').srcObject = media
     await $('video').play()
+    ++storedImageRequest
+    resetCaptureView()
+    inspectionFilename='frame.jpg'
+    $('viewingFile').textContent='实时采集'
     $('result').replaceChildren()
     $('camera').textContent = '停止采集'
     message('正在逐帧检测，点击建档可保存一次检验。')
@@ -329,21 +320,15 @@ function showAlignmentStatus(alignment){
 
 function present(r) {
   $('title').textContent='采集检测'
-  $('pageDescription').textContent='原检验单 · '+(r.readonly ? '归档结果仅供查看' : '查看并复核已保存的检测结果')
-  currentSourceRecordId=null
-  const context=activeStoredRecord?.record.id===r.id ? activeStoredRecord : null
-  $('savedRecordAction').hidden=!context
-  if(context){
-    $('savedRecordAction').textContent='按当前模板重新识别'
-    $('savedRecordAction').onclick=()=>inspectStoredRecord(r.id,context.origin,reviewIds)
-  }
+  $('pageDescription').textContent='已保存的识别结果 · '+(r.readonly ? '归档结果仅供查看' : '可复核检验结论并签字')
   stopCamera()
   currentRecordId = r.id
   currentReadOnly=!!r.readonly || !!r.exception_mode
-  $('inspect').inert=currentReadOnly
-  $('run').hidden=currentReadOnly
-  document.querySelector('#work .toolbar').hidden=currentReadOnly
-  inspectionInput='/api/records/'+r.id+'/image?original=1'
+  $('inspect').inert=true
+  $('run').hidden=true
+  document.querySelector('#work .toolbar').hidden=false
+  inspectionInput=null
+  inspectionFilename=r.filename || 'inspection.jpg'
   showAlignmentStatus(r.alignment)
   $('viewingFile').textContent = r.filename || ''
   if (typeof updateReviewNavigation === 'function') updateReviewNavigation(r)
@@ -393,7 +378,6 @@ function present(r) {
     btn.disabled = true
     try {
       const updated=await api('/api/records/'+r.id+'/review',new FormData(e.target))
-      if(activeStoredRecord?.record.id===updated.id) activeStoredRecord.record=updated
       present(updated)
       const updates=await Promise.allSettled([refresh(),refreshWorkspace(),...(updated.batch_id ? [openBatch(updated.batch_id)] : [])])
       message(updates.some(result=>result.status==='rejected') ? '复核已保存，部分列表暂时未能刷新，请重新打开批次查看。' : '复核已保存，检测任务中的图片结论、签字信息和批次统计已同步更新。')
@@ -403,7 +387,7 @@ function present(r) {
 }
 $('inspect').onsubmit = async e => {
   e.preventDefault()
-  if (busy || currentReadOnly) return
+  if (busy || currentReadOnly || currentRecordId) return
   busy = true
   for (const id of ['run','camera','file','snap','sample']) $(id).disabled=true
   $('run').textContent='正在检测…'
@@ -526,17 +510,6 @@ function switchPage(page) {
   message('')
 }
 document.querySelectorAll('.nav[data-page]').forEach(n=>n.onclick=()=>{
-  if (n.dataset.page==='work' && (currentRecordId || currentSourceRecordId)){
-    currentReadOnly=false;currentRecordId=null;inspectionInput=null
-    $('inspect').inert=false
-    $('run').hidden=false
-    document.querySelector('#work .toolbar').hidden=false
-    $('result').replaceChildren()
-    showImage('/static/sample-missing.png?v=20261110b',[],'样例板面')
-    reviewOrigin='work'
-    currentSourceRecordId=null;activeStoredRecord=null
-    $('savedRecordAction').hidden=true;$('backToBatch').hidden=true
-  }
   switchPage(n.dataset.page)
   refresh().catch(err=>message(err.message))
   refreshWorkspace().catch(err=>message(err.message))

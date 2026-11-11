@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from flask import Flask, abort, jsonify, request, send_file, redirect
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageDraw, ImageOps, UnidentifiedImageError
 from werkzeug.exceptions import HTTPException
 os.environ.setdefault("NO_ALBUMENTATIONS_UPDATE", "1")
 from model_runtime import Detection, ModelRuntime, PlatformRuntime
@@ -576,9 +576,62 @@ def detail(rid):
 @app.get("/api/records/<rid>/image")
 def photo(rid):
     with db() as conn:
-        column = "COALESCE(original_image,image)" if request.args.get("original") == "1" else "image"
-        row = conn.execute(f"SELECT {column} FROM records WHERE id=?", (rid,)).fetchone()
-    return send_file(io.BytesIO(row[0]), mimetype="image/jpeg") if row else abort(404)
+        original=request.args.get('original')=='1'
+        column = "COALESCE(original_image,image)" if original else "image"
+        row = conn.execute(f"SELECT {column},boxes,inspection FROM records WHERE id=?", (rid,)).fetchone()
+    if not row:
+        abort(404)
+    content=row[0]
+    boxes=json.loads(row[1] or '[]')
+    inspection=json.loads(row[2] or 'null')
+    sites=inspection.get('sites',[]) if inspection else []
+    marked=request.args.get('marked')=='1' and not original and bool(boxes or sites)
+    digest=hashlib.sha256(content)
+    if marked:
+        digest.update(('marked-v2:'+str(row[1])+str(row[2])).encode('utf-8'))
+    tag=digest.hexdigest()
+    if request.if_none_match.contains_weak(tag):
+        response=app.response_class(status=304)
+        response.set_etag(tag)
+        response.cache_control.no_cache=True
+        return response
+    if marked:
+        # Thumbnails use the saved corrected pixels and detections, never a new inference.
+        with Image.open(io.BytesIO(content)) as source:
+            picture=source.convert('RGB')
+        drawing=ImageDraw.Draw(picture,'RGBA')
+        width,height=picture.size
+        def rectangle(values):
+            try:
+                x1,y1,x2,y2=map(float,values)
+            except (TypeError,ValueError):
+                return None
+            if not all(math.isfinite(value) for value in (x1,y1,x2,y2)) or x2<=x1 or y2<=y1:
+                return None
+            return (max(0,min(width-1,round(x1*width))),max(0,min(height-1,round(y1*height))),
+                    max(0,min(width-1,round(x2*width))),max(0,min(height-1,round(y2*height))))
+        dash=max(3,round(max(width,height)/320))
+        point_width=max(1,round(max(width,height)/960))
+        for site in sites:
+            rect=rectangle(site.get('rect'))
+            if rect is None:
+                continue
+            left,top,right,bottom=rect
+            drawing.rectangle(rect,fill=(56,189,248,8))
+            for start in range(left,right+1,dash*2):
+                for y in (top,bottom):
+                    drawing.line((start,y,min(start+dash,right),y),fill=(56,189,248,255),width=point_width)
+            for start in range(top,bottom+1,dash*2):
+                for x in (left,right):
+                    drawing.line((x,start,x,min(start+dash,bottom)),fill=(56,189,248,255),width=point_width)
+        for box in boxes:
+            rect=rectangle(box.get('rect'))
+            if rect is not None:
+                drawing.rectangle(rect,outline=(245,158,11,153),width=max(2,round(max(width,height)/320)))
+        buffer=io.BytesIO()
+        picture.save(buffer,'JPEG',quality=94)
+        content=buffer.getvalue()
+    return send_file(io.BytesIO(content),mimetype='image/jpeg',etag=tag,conditional=True)
 
 
 @app.delete("/api/records/<rid>")

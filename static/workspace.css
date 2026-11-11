@@ -78,9 +78,9 @@ article,.panel,.editor{background:#fff;border:1px solid var(--border);border-rad
 .callout:hover,.callout.active{background:#edf3ff;border-color:#afc2ef}
 .callout .number{background:#eaf0fc;color:#5272a8}
 .callout .score,.quality output{color:#3569e8}
-.inspection-site{position:absolute;border:1px dashed #38bdf8;background:#38bdf808;pointer-events:none;box-sizing:border-box}
 .archive-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap}
 .archive-actions button{white-space:nowrap}
+.inspection-site{position:absolute;border:1px dashed #38bdf8;background:#38bdf808;pointer-events:none;box-sizing:border-box}
 .image-card,.process-card{display:block;width:100%}
 .image-card .thumbnail{width:100%}
 .image-defect-summary{display:grid;gap:3px;width:100%;padding:7px 9px;background:#f3f7fc;border-radius:5px;font-size:11px;line-height:1.7;white-space:normal;overflow-wrap:anywhere}
