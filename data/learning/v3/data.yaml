@@ -1,0 +1,5 @@
+names:
+- missing_connection
+path: "C:/Users/32537/Desktop/\u5F00\u53D1/pcb-inspector/data/learning/v3"
+train: images/train
+val: images/train
