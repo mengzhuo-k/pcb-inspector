@@ -90,11 +90,13 @@ def main() -> int:
     device = str(config.get("device", "cpu"))
     default_name = "yolo11n.pt" if template == "det" else "yolo11n-cls.pt"
     model_name = config.get("model") or default_name
-    if not Path(model_name).is_file():
+    if not Path(model_name).is_file() and not config.get('base_model_id'):
         bundled = Path(__file__).resolve().parent / default_name
         if bundled.is_file():
             model_name = str(bundled)
     try:
+        if config.get('base_model_id') and not Path(model_name).is_file():
+            raise ValueError('改进基础模型权重不存在，未启动训练')
         if template == "det":
             model = YOLO(model_name)
             model.train(data=str(dataset / "data.yaml"), epochs=epochs, imgsz=imgsz,

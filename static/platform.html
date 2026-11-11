@@ -3,7 +3,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>焊视 · 模型训练工作台</title>
 <link rel="stylesheet" href="./static/platform.css?v=20261111aq">
-<link rel="stylesheet" href="./static/workspace.css?v=4">
+<link rel="stylesheet" href="./static/workspace.css?v=5">
 </head><body class="training-page">
 <aside class="sidebar">
   <a class="brand" href="/static/index.html"><span class="brandmark">▦</span><span>焊视<small>PCB INSPECT</small></span></a>
@@ -24,12 +24,16 @@
 <main>
   <p id="modelTestNotice" role="alert" hidden></p>
   <div class="heading"><div><h1>模型训练</h1><p>支持接收识别图片或直接导入。保存标注后自动训练，历史模型可选择用于识别。</p></div><div class="heading-actions"><span id="importModeBadge" class="sync-badge">正在读取入库设置</span><button id="importTrainingImages" class="primary" disabled>↑ 导入图片</button><input id="trainingFiles" type="file" accept="image/*" multiple hidden></div></div>
-  <details id="modelHistory" class="model-history">
+  <details id="modelHistory" class="model-history" open>
     <summary><strong>历史模型</strong><span id="modelHistorySummary">正在读取模型版本…</span></summary>
     <div class="model-history-body">
       <div class="model-history-settings"><label class="inline-check"><input id="followLatestModel" type="checkbox" checked>自动使用最新模型</label><span id="modelSelectionHint" role="status"></span></div>
+      <div class="model-improvement">
+        <div><strong id="trainingBaseLabel">训练基础：初始模型</strong><p id="trainingBaseHint">可从下方选择历史模型继续改进。</p><p id="modelTrainingState" role="status"></p></div>
+        <div class="archive-actions"><button id="startModelImprovement" class="primary" disabled>开始改进训练</button><button id="resetTrainingBase" class="quiet" disabled>使用初始模型</button></div>
+      </div>
       <div id="modelHistoryList" class="model-history-list"></div>
-      <p class="model-history-note">历史模型会一直保留，由你选择删除。手动选择后会固定使用该版本；使用中的模型需先切换到其他版本后再删除。</p>
+      <p class="model-history-note">“用于识别”切换检测版本；“基于此模型改进”选择继续训练的基础，改进结果另存为新版本。历史模型由你选择删除；识别使用中或选为改进基础的模型需先切换后再删除。</p>
     </div>
   </details>
     <div id="annotationWorkspace" class="label-layout">
@@ -105,5 +109,5 @@
 </dialog>
 <div id="toast" role="status"></div>
 <script src="./static/model-test-notice.js"></script>
-<script src="./static/platform.js?v=20261111history"></script>
+<script src="./static/platform.js?v=20261111improve"></script>
 </body></html>

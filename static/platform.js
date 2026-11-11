@@ -12,6 +12,7 @@ const state = {
   selectedSites:[],
   sitePopup:null,
   models:[],modelSelection:null,modelsLoading:false,modelHistoryRequest:0,modelAction:false,
+  trainingBase:null,modelUpdate:null,
 }
 
 function toast(text, error=false){
@@ -1046,11 +1047,25 @@ window.addEventListener('beforeunload',event=>{
 })
 
 function renderModelUpdate(data){
+  state.modelUpdate=data
   const model=data.latest_model
   const current=data.selection?.current_model
   $('latestModelLabel').title=''
   $('latestModelLabel').textContent=current ? '识别使用 '+current.version+(model && model.id!==current.id ? ' · 最新 '+model.version : '') : model ? '最新模型 '+model.version : '尚未生成模型'
   renderModelTestNotice(data.testing)
+  renderModelImprovement()
+}
+
+function renderModelImprovement(){
+  const baseModel=state.trainingBase?.model
+  const update=state.modelUpdate
+  const busy=['pending','preparing','queued','running'].includes(update?.state)
+  $('trainingBaseLabel').textContent=baseModel ? '当前改进基础：'+baseModel.version : '训练基础：初始模型'
+  $('trainingBaseHint').textContent=baseModel ? '补充图片并保存标注后，将使用当前训练图库基于 '+baseModel.version+' 继续训练；也可用现有标注开始改进。原模型会保留，已排队的任务不受基础切换影响。' : '点击历史版本旁的“基于此模型改进”，再补充图片和标注。'
+  const labels={pending:'等待开始训练',preparing:'正在准备训练数据',queued:'训练已排队',running:'正在训练',ready:'训练完成',failed:'训练失败',waiting:'等待补充标注'}
+  $('modelTrainingState').textContent=update ? (labels[update.state] || '')+(update.message ? ' · '+update.message : update.state==='ready' && update.latest_model ? ' · 已生成 '+update.latest_model.version : '') : ''
+  $('startModelImprovement').disabled=state.modelAction || !baseModel || !update?.auto_train_enabled || busy
+  $('resetTrainingBase').disabled=state.modelAction || !baseModel
 }
 
 function renderModelHistory(){
@@ -1069,7 +1084,8 @@ function renderModelHistory(){
     const metrics=model.metrics || {}
     const metric=typeof metrics.map50==='number' ? 'mAP50 '+(metrics.map50*100).toFixed(1)+'%' : typeof metrics.top1==='number' ? 'Top-1 '+(metrics.top1*100).toFixed(1)+'%' : '尚无有效验证指标'
     const created=model.created && !Number.isNaN(Date.parse(model.created)) ? new Date(model.created).toLocaleString('zh-CN',{hour12:false}) : '未记录时间'
-    row.innerHTML='<div class="model-history-description"><strong>'+esc(model.version)+'</strong>'+(model.is_active ? '<span class="model-current-badge">使用中</span>' : '')+'<small>'+esc(created)+' · '+(model.template==='det' ? '缺陷检测' : '整板分类')+'</small></div><span class="model-history-metric">'+esc(model.weights_available ? metric : '权重文件不可用')+'</span>'
+    const origin=model.card?.trained_from
+    row.innerHTML='<div class="model-history-description"><strong>'+esc(model.version)+'</strong>'+(model.is_active ? '<span class="model-current-badge">使用中</span>' : '')+(model.is_training_base ? '<span class="model-current-badge">改进基础</span>' : '')+'<small>'+esc(created)+' · '+(model.template==='det' ? '缺陷检测' : '整板分类')+(origin ? ' · 基于 '+esc(origin.version)+' 改进' : '')+'</small></div><span class="model-history-metric">'+esc(model.weights_available ? metric : '权重文件不可用')+'</span>'
     const actions=document.createElement('div')
     actions.className='archive-actions'
     const use=document.createElement('button')
@@ -1078,14 +1094,20 @@ function renderModelHistory(){
     use.disabled=state.modelAction || fixed || !model.weights_available || model.template!=='det'
     use.className='quiet'
     use.onclick=()=>changeModelSelection({model_id:model.id})
+    const improve=document.createElement('button')
+    improve.textContent=model.is_training_base ? '已选为改进基础' : '基于此模型改进'
+    improve.className='quiet'
+    improve.disabled=state.modelAction || model.is_training_base || !model.weights_available || model.template!=='det'
+    improve.onclick=()=>changeTrainingBase(model.id)
     const remove=document.createElement('button')
     remove.className='danger';remove.textContent='删除'
-    remove.disabled=state.modelAction || model.is_active
-    if(model.is_active) remove.title='请先切换到其他模型后再删除'
+    remove.disabled=state.modelAction || model.is_active || model.is_training_base
+    if(model.is_active || model.is_training_base) remove.title='请先切换识别模型或改进基础后再删除'
     remove.onclick=()=>deleteHistoryModel(model)
-    actions.append(use,remove);row.append(actions);list.append(row)
+    actions.append(use,improve,remove);row.append(actions);list.append(row)
   }
   if(!state.models.length) list.innerHTML='<p class="empty">尚无历史模型，训练完成后会自动记录在这里。</p>'
+  renderModelImprovement()
 }
 
 async function loadModelHistory(force=false){
@@ -1093,12 +1115,13 @@ async function loadModelHistory(force=false){
   const request=++state.modelHistoryRequest
   state.modelsLoading=true
   try{
-    const [models,selection]=await Promise.all([
+    const [models,selection,trainingBase]=await Promise.all([
       api('/api/projects/'+state.project.id+'/models'),
       api('/api/projects/'+state.project.id+'/model-selection'),
+      api('/api/projects/'+state.project.id+'/training-base'),
     ])
     if(request!==state.modelHistoryRequest) return
-    state.models=models;state.modelSelection=selection
+    state.models=models;state.modelSelection=selection;state.trainingBase=trainingBase
     renderModelHistory()
   }finally{if(request===state.modelHistoryRequest) state.modelsLoading=false}
 }
@@ -1116,7 +1139,7 @@ async function changeModelSelection(payload){
 }
 
 async function deleteHistoryModel(model){
-  if(state.modelAction || model.is_active) return
+  if(state.modelAction || model.is_active || model.is_training_base) return
   if(!confirm('删除历史模型 '+model.version+'？训练图片和历史检验记录会保留。')) return
   ++state.modelHistoryRequest;state.modelsLoading=false
   state.modelAction=true;renderModelHistory()
@@ -1124,6 +1147,31 @@ async function deleteHistoryModel(model){
     await api('/api/models/'+model.id,undefined,'DELETE')
     await loadModelHistory(true);await loadModelUpdate()
     toast('模型 '+model.version+' 已删除')
+  }catch(error){toast(error.message,true)}
+  finally{state.modelAction=false;renderModelHistory()}
+}
+
+async function changeTrainingBase(modelId){
+  if(state.modelAction || !state.project) return
+  ++state.modelHistoryRequest;state.modelsLoading=false
+  state.modelAction=true;renderModelHistory()
+  try{
+    state.trainingBase=await api('/api/projects/'+state.project.id+'/training-base',{model_id:modelId})
+    await loadModelHistory(true)
+    toast(modelId ? '已选为改进基础，补充图片并保存标注后将继续训练' : '已恢复使用初始模型训练')
+  }catch(error){toast(error.message,true)}
+  finally{state.modelAction=false;renderModelHistory()}
+}
+
+$('resetTrainingBase').onclick=()=>changeTrainingBase(null)
+$('startModelImprovement').onclick=async()=>{
+  if(state.modelAction || !state.trainingBase?.model || !leaveAnnotation()) return
+  ++state.modelHistoryRequest;state.modelsLoading=false
+  state.modelAction=true;renderModelHistory()
+  try{
+    const update=await api('/api/projects/'+state.project.id+'/model-update',{})
+    renderModelUpdate(update)
+    toast('已请求基于 '+state.trainingBase.model.version+' 改进，训练进度会自动更新')
   }catch(error){toast(error.message,true)}
   finally{state.modelAction=false;renderModelHistory()}
 }

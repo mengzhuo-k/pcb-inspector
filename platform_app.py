@@ -180,6 +180,8 @@ def initialize() -> None:
         CREATE TABLE IF NOT EXISTS project_model_selection(
             project_id TEXT PRIMARY KEY,mode TEXT NOT NULL DEFAULT 'automatic',
             model_id TEXT,updated TEXT);
+        CREATE TABLE IF NOT EXISTS project_training_base(
+            project_id TEXT PRIMARY KEY,model_id TEXT NOT NULL,updated TEXT);
         CREATE TABLE IF NOT EXISTS model_version_counters(
             project_id TEXT PRIMARY KEY,next_version INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS deployments(
@@ -985,11 +987,13 @@ def model_update_status(pid):
             FROM images WHERE project_id=?""", (pid,)).fetchone()
         job = conn.execute("SELECT state,error,model_id FROM jobs WHERE id=?", (update["job_id"],)).fetchone() if update else None
         selection=selection_status(conn,pid)
+        training_base=training_base_status(conn,pid)
     result = dict(update) if update else dict(state="waiting", message="上传图片并保存缺陷标注后自动更新模型")
     if job and job["state"] == "running":
         result["state"] = "running"
     result.update(testing=testing, latest_model=dict(latest) if latest else None,
-                  images=counts["total"], saved=counts["saved"] or 0,selection=selection)
+                  images=counts["total"], saved=counts["saved"] or 0,selection=selection,
+                  training_base=training_base,auto_train_enabled=AUTO_TRAIN)
     return jsonify(result)
 
 
@@ -1233,6 +1237,7 @@ def dataset_detail(did):
 def start_training(did):
     payload = request.get_json(silent=True) or {}
     with db() as conn:
+        conn.execute('BEGIN IMMEDIATE')
         dataset = conn.execute("SELECT * FROM datasets WHERE id=?", (did,)).fetchone()
         if not dataset:
             abort(404, "数据集不存在")
@@ -1261,6 +1266,17 @@ def start_training(did):
                       classes=json_value(dataset["counts"], {}).get("class_order") or classes_for(template),
                       auto_publish=bool(payload.get("auto_publish", template == "det")),
                       station=str(payload.get("station", ""))[:80])
+        if template=='det' and not payload.get('model'):
+            base=conn.execute('''SELECT m.* FROM project_training_base b JOIN models m ON m.id=b.model_id
+                WHERE b.project_id=? AND m.project_id=?''',(project_id,project_id)).fetchone()
+            if base:
+                try:
+                    if hashlib.sha256(Path(base['weights']).read_bytes()).hexdigest()!=base['sha256']:
+                        raise ValueError('权重校验失败')
+                except (OSError,TypeError,ValueError) as exc:
+                    abort(400,'改进基础模型不可用，请重新选择：'+str(exc)[:160])
+                config.update(model=base['weights'],base_model_id=base['id'],
+                              base_model_version=base['version'],base_model_sha256=base['sha256'])
         if payload.get("model_update_revision"):
             try:
                 config["model_update_revision"] = int(payload["model_update_revision"])
@@ -1349,6 +1365,44 @@ def selection_status(conn,pid):
                 current_model=dict(current) if current else None)
 
 
+def training_base_status(conn,pid):
+    row=conn.execute('''SELECT m.id,m.version FROM project_training_base b JOIN models m ON m.id=b.model_id
+        WHERE b.project_id=? AND m.project_id=?''',(pid,pid)).fetchone()
+    return dict(model=dict(row) if row else None)
+
+
+@app.route('/api/projects/<pid>/training-base',methods=['GET','POST'])
+def training_base(pid):
+    project(pid)
+    if request.method=='GET':
+        with db() as conn:
+            return jsonify(training_base_status(conn,pid))
+    payload=request.get_json(silent=True)
+    if not isinstance(payload,dict) or 'model_id' not in payload:
+        abort(400,'请选择改进基础模型')
+    mid=payload['model_id']
+    if mid is not None and not isinstance(mid,str):
+        abort(400,'改进基础模型设置无效')
+    with db() as conn:
+        row=conn.execute('SELECT * FROM models WHERE project_id=? AND id=?',(pid,mid)).fetchone() if mid else None
+        if mid is not None and not row:
+            abort(404,'请选择本项目中存在的模型')
+    if row:
+        validate_selected_model(row)
+    with db() as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        if row:
+            current=conn.execute('SELECT * FROM models WHERE project_id=? AND id=?',(pid,mid)).fetchone()
+            if not current or (current['sha256'],current['weights'])!=(row['sha256'],row['weights']):
+                abort(409,'模型已变化或删除，请刷新模型列表')
+            conn.execute('''INSERT INTO project_training_base VALUES(?,?,?) ON CONFLICT(project_id)
+                DO UPDATE SET model_id=excluded.model_id,updated=excluded.updated''',(pid,mid,now()))
+        else:
+            conn.execute('DELETE FROM project_training_base WHERE project_id=?',(pid,))
+        result=training_base_status(conn,pid)
+    return jsonify(result)
+
+
 def validate_selected_model(row):
     if json_value(row['card'],{}).get('template','det')!='det':
         abort(400,'当前识别系统只支持目标检测模型')
@@ -1415,6 +1469,7 @@ def list_models(pid):
     with db() as conn:
         rows = conn.execute("SELECT * FROM models WHERE project_id=? ORDER BY created DESC,rowid DESC", (pid,)).fetchall()
         stations={}
+        base=training_base_status(conn,pid)['model']
         for deployment in conn.execute("SELECT model_id,station FROM deployments WHERE project_id=? AND active=1",(pid,)):
             stations.setdefault(deployment['model_id'],[]).append(deployment['station'])
     result = []
@@ -1425,6 +1480,7 @@ def list_models(pid):
         item["template"] = (item["card"] or {}).get("template",'det')
         item['active_stations']=stations.get(item['id'],[])
         item['is_active']=bool(item['active_stations'])
+        item['is_training_base']=bool(base and base['id']==item['id'])
         item['deployed_station']=item['active_stations'][0] if item['is_active'] else None
         item['weights_available']=Path(item['weights'] or '').is_file()
         result.append(item)
@@ -1441,6 +1497,8 @@ def delete_model(mid):
         if conn.execute('SELECT 1 FROM deployments WHERE model_id=? AND active=1',(mid,)).fetchone() or conn.execute(
             "SELECT 1 FROM project_model_selection WHERE model_id=? AND mode='manual'",(mid,)).fetchone():
             abort(409,'此模型正在用于识别，请先切换到其他模型后再删除')
+        if conn.execute('SELECT 1 FROM project_training_base WHERE model_id=?',(mid,)).fetchone():
+            abort(409,'此模型已设为改进基础，请先选择其他基础模型或使用初始模型后再删除')
         path=Path(row['weights']).resolve() if row['weights'] else None
         shared=conn.execute('SELECT 1 FROM models WHERE weights=? AND id!=?',(row['weights'],mid)).fetchone()
         for job in conn.execute("SELECT config FROM jobs WHERE state IN ('queued','running')"):
@@ -1820,6 +1878,13 @@ def run_job(jid: str) -> None:
     try:
         with db() as conn:
             conn.execute("UPDATE jobs SET state='running',started=? WHERE id=?", (now(), jid))
+        if config.get('base_model_id'):
+            initial=Path(config['model']).read_bytes()
+            if hashlib.sha256(initial).hexdigest()!=config['base_model_sha256']:
+                raise ValueError('改进基础模型权重校验失败，未启动训练')
+            initial_path=job_dir/'initial.pt'
+            initial_path.write_bytes(initial)
+            config['model']=str(initial_path)
         dataset_dir = (build_det_dataset if job["template"] == "det" else build_cls_dataset)(
             job["dataset_id"], job_dir)
         config.update(dataset=str(dataset_dir), job_dir=str(job_dir), template=job["template"],
@@ -1867,13 +1932,15 @@ def run_job(jid: str) -> None:
             folder.mkdir(parents=True, exist_ok=True)
             target = folder / "best.pt"
             shutil.copy2(best, target)
-            import hashlib
             digest = hashlib.sha256(target.read_bytes()).hexdigest()
             card = dict(project=job["project_id"], template=job["template"], version=version,
                         classes=config.get("classes"), metrics=metadata.get("metrics"),
                         threshold=metadata.get("threshold", 0.5),
                         dataset=job["dataset_id"], created=now(),
                         source="pcb-inspector training platform")
+            if config.get('base_model_id'):
+                card['trained_from']=dict(id=config['base_model_id'],version=config['base_model_version'],
+                                          sha256=config['base_model_sha256'])
             conn.execute("""INSERT INTO models(id,project_id,job_id,version,sha256,metrics,
                 threshold,weights,card,published,created) VALUES(?,?,?,?,?,?,?,?,?,0,?)""",
                          (mid, job["project_id"], jid, version, digest,
