@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>焊视 · 焊接质量工作台</title><link rel="stylesheet" href="/static/style.css?v=12"><link rel="stylesheet" href="/static/inspection.css?v=4"><link rel="stylesheet" href="/static/workspace.css?v=9"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>焊视 · 焊接质量工作台</title><link rel="stylesheet" href="/static/style.css?v=12"><link rel="stylesheet" href="/static/inspection.css?v=5"><link rel="stylesheet" href="/static/workspace.css?v=9"></head>
 <body class="inspection-page">
 <aside class="sidebar">
   <a class="brand" href="/static/index.html"><span class="brandmark">▦</span><span>焊视<small>PCB INSPECT</small></span></a>
@@ -64,7 +64,16 @@
         <div class="cardhead"><div class="paneltitle"><h2>板面检测</h2><span class="tag" id="source">样例板面</span><span id="alignmentStatus" class="tag" role="status" hidden></span><span id="templateStatus" class="tag" role="status" hidden></span></div><div class="viewactions"><button id="overlays" aria-pressed="true">标注已开启</button><button id="expand">放大查看</button></div></div>
         <div class="toolbar"><div class="captureactions"><label class="btn" for="file">↑ 上传图片</label><input type="file" accept="image/*" id="file" hidden><label class="btn" for="snap">拍照上传</label><input type="file" accept="image/*" capture="environment" id="snap" hidden><button id="camera">开启实时采集</button><button id="sample" class="quiet">载入示例</button></div></div>
         <div class="viewer" id="viewer">
-          <div id="frame"><img id="photo" src="/static/sample-missing.png?v=20261110b" alt="漏焊样例 PCB 孔位与焊盘"><div id="marks"></div></div>
+          <div id="frame">
+            <div id="imageSurface"><img id="photo" src="/static/sample-missing.png?v=20261110b" alt="漏焊样例 PCB 孔位与焊盘" draggable="false"><div id="marks"></div></div>
+            <div class="inspection-view-tools" role="group" aria-label="图片查看工具">
+              <div class="inspection-zoom"><button type="button" id="imageZoomOut" aria-label="缩小图片">−</button><output id="imageZoomValue" aria-live="polite">100%</output><button type="button" id="imageZoomIn" aria-label="放大图片">＋</button><button type="button" id="imageFit">适应窗口</button></div>
+              <label class="inspection-brightness" for="imageBrightness">亮度<input id="imageBrightness" type="range" min="50" max="200" step="5" value="100"><output id="imageBrightnessValue" for="imageBrightness">100%</output></label>
+              <label class="inspection-sites-toggle"><input id="imageShowSites" type="checkbox" checked>显示点位</label>
+              <button type="button" id="imageViewReset">重置视图</button>
+            </div>
+            <span class="inspection-view-hint">滚轮缩放 · 放大后拖动查看</span>
+          </div>
           <aside class="detection-panel">
             <form id="inspect">
               <h3>检验信息</h3>
@@ -89,7 +98,7 @@
     <p id="status" role="status"></p>
   </main>
 </div>
-<script src="/static/app.js?v=23"></script>
+<script src="/static/app.js?v=25"></script>
 <script src="/static/batch.js?v=25"></script>
 <script src="/static/model-test-notice.js"></script>
 <script src="/static/model.js?v=5"></script>

@@ -1,0 +1,100 @@
+Traceback (most recent call last):
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\urllib3\connection.py", line 239, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\urllib3\util\connection.py", line 60, in create_connection
+    for res in socket.getaddrinfo(host, port, family, socket.SOCK_STREAM):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\32537\AppData\Local\Programs\Python\Python311\Lib\socket.py", line 962, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\urllib3\connectionpool.py", line 793, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\urllib3\connectionpool.py", line 494, in _make_request
+    raise new_e
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\urllib3\connectionpool.py", line 470, in _make_request
+    self._validate_conn(conn)
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\urllib3\connectionpool.py", line 1125, in _validate_conn
+    conn.connect()
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\urllib3\connection.py", line 827, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\urllib3\connection.py", line 246, in _new_conn
+    raise NameResolutionError(self.host, self, e) from e
+urllib3.exceptions.NameResolutionError: HTTPSConnection(host='release-assets.githubusercontent.com', port=443): Failed to resolve 'release-assets.githubusercontent.com' ([Errno 11001] getaddrinfo failed)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\requests\adapters.py", line 696, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\urllib3\connectionpool.py", line 847, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\urllib3\util\retry.py", line 555, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPSConnectionPool(host='release-assets.githubusercontent.com', port=443): Max retries exceeded with url: /github-production-release-asset/521807533/b7314782-9dd4-4bb5-a3bd-5b62195f3b73?sp=r&sv=2018-11-09&sr=b&spr=https&se=2026-11-10T14%3A00%3A47Z&rscd=attachment%3B+filename%3Dyolo11n.pt&rsct=application%2Foctet-stream&skoid=96c2d410-5711-43a1-aedd-ab1947aa7ab0&sktid=398a6654-997b-47e9-b12b-9515b896b4de&skt=2026-11-10T13%3A00%3A26Z&ske=2026-11-10T14%3A00%3A47Z&sks=b&skv=2018-11-09&sig=iWvx1HH51dlJxRrNG6D9Ap6xq8mneNXVIfcSwOSgE9M%3D&jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmVsZWFzZS1hc3NldHMuZ2l0aHVidXNlcmNvbnRlbnQuY29tIiwia2V5Ijoia2V5MSIsImV4cCI6MTc5NDMxNjM2NSwibmJmIjoxNzk0MzE2MDY1LCJwYXRoIjoicmVsZWFzZWFzc2V0cHJvZHVjdGlvbi5ibG9iLmNvcmUud2luZG93cy5uZXQifQ.KSY97v0IgWiBqRlJDMXMZwnMAuUxL5d7BSp23Zk0W68&response-content-disposition=attachment%3B%20filename%3Dyolo11n.pt&response-content-type=application%2Foctet-stream (Caused by NameResolutionError("HTTPSConnection(host='release-assets.githubusercontent.com', port=443): Failed to resolve 'release-assets.githubusercontent.com' ([Errno 11001] getaddrinfo failed)"))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\ultralytics\utils\downloads.py", line 363, in safe_download
+    with requests.get(url, stream=True, headers=headers, timeout=(30, 300)) as response:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\requests\api.py", line 87, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\requests\api.py", line 71, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\requests\sessions.py", line 651, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\requests\sessions.py", line 805, in send
+    history = [resp for resp in gen]
+              ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\requests\sessions.py", line 805, in <listcomp>
+    history = [resp for resp in gen]
+              ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\requests\sessions.py", line 292, in resolve_redirects
+    resp = self.send(
+           ^^^^^^^^^^
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\requests\sessions.py", line 784, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\requests\adapters.py", line 729, in send
+    raise ConnectionError(e, request=request)
+requests.exceptions.ConnectionError: HTTPSConnectionPool(host='release-assets.githubusercontent.com', port=443): Max retries exceeded with url: /github-production-release-asset/521807533/b7314782-9dd4-4bb5-a3bd-5b62195f3b73?sp=r&sv=2018-11-09&sr=b&spr=https&se=2026-11-10T14%3A00%3A47Z&rscd=attachment%3B+filename%3Dyolo11n.pt&rsct=application%2Foctet-stream&skoid=96c2d410-5711-43a1-aedd-ab1947aa7ab0&sktid=398a6654-997b-47e9-b12b-9515b896b4de&skt=2026-11-10T13%3A00%3A26Z&ske=2026-11-10T14%3A00%3A47Z&sks=b&skv=2018-11-09&sig=iWvx1HH51dlJxRrNG6D9Ap6xq8mneNXVIfcSwOSgE9M%3D&jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmVsZWFzZS1hc3NldHMuZ2l0aHVidXNlcmNvbnRlbnQuY29tIiwia2V5Ijoia2V5MSIsImV4cCI6MTc5NDMxNjM2NSwibmJmIjoxNzk0MzE2MDY1LCJwYXRoIjoicmVsZWFzZWFzc2V0cHJvZHVjdGlvbi5ibG9iLmNvcmUud2luZG93cy5uZXQifQ.KSY97v0IgWiBqRlJDMXMZwnMAuUxL5d7BSp23Zk0W68&response-content-disposition=attachment%3B%20filename%3Dyolo11n.pt&response-content-type=application%2Foctet-stream (Caused by NameResolutionError("HTTPSConnection(host='release-assets.githubusercontent.com', port=443): Failed to resolve 'release-assets.githubusercontent.com' ([Errno 11001] getaddrinfo failed)"))
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\training\platform_fit.py", line 29, in main
+    bundled = Path(__file__).resolve().parent / default_name
+                ^^^^^^^^^^^^^^^^
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\ultralytics\models\yolo\model.py", line 84, in __init__
+    super().__init__(model=model, task=task, verbose=verbose)
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\ultralytics\engine\model.py", line 140, in __init__
+    self._load(model, task=task)
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\ultralytics\engine\model.py", line 255, in _load
+    self.model, self.ckpt = load_checkpoint(weights)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\ultralytics\nn\tasks.py", line 2012, in load_checkpoint
+    ckpt, weight = torch_safe_load(weight)  # load ckpt
+                   ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\ultralytics\nn\tasks.py", line 1889, in torch_safe_load
+    file = attempt_download_asset(weight)  # search online if missing locally
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\ultralytics\utils\downloads.py", line 579, in attempt_download_asset
+    safe_download(url=f"{download_url}/{release}/{name}", file=file, min_bytes=1e5, **kwargs)
+  File "C:\Users\32537\Desktop\开发\pcb-inspector\.venv\Lib\site-packages\ultralytics\utils\downloads.py", line 445, in safe_download
+    raise ConnectionError(emojis(f"❌  Download failure for {uri}. {limit}{e}")) from e
+ConnectionError:   Download failure for https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11n.pt. Retry limit reached. HTTPSConnectionPool(host='release-assets.githubusercontent.com', port=443): Max retries exceeded with url: /github-production-release-asset/521807533/b7314782-9dd4-4bb5-a3bd-5b62195f3b73?sp=r&sv=2018-11-09&sr=b&spr=https&se=2026-11-10T14%3A00%3A47Z&rscd=attachment%3B+filename%3Dyolo11n.pt&rsct=application%2Foctet-stream&skoid=96c2d410-5711-43a1-aedd-ab1947aa7ab0&sktid=398a6654-997b-47e9-b12b-9515b896b4de&skt=2026-11-10T13%3A00%3A26Z&ske=2026-11-10T14%3A00%3A47Z&sks=b&skv=2018-11-09&sig=iWvx1HH51dlJxRrNG6D9Ap6xq8mneNXVIfcSwOSgE9M%3D&jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmVsZWFzZS1hc3NldHMuZ2l0aHVidXNlcmNvbnRlbnQuY29tIiwia2V5Ijoia2V5MSIsImV4cCI6MTc5NDMxNjM2NSwibmJmIjoxNzk0MzE2MDY1LCJwYXRoIjoicmVsZWFzZWFzc2V0cHJvZHVjdGlvbi5ibG9iLmNvcmUud2luZG93cy5uZXQifQ.KSY97v0IgWiBqRlJDMXMZwnMAuUxL5d7BSp23Zk0W68&response-content-disposition=attachment%3B%20filename%3Dyolo11n.pt&response-content-type=application%2Foctet-stream (Caused by NameResolutionError("HTTPSConnection(host='release-assets.githubusercontent.com', port=443): Failed to resolve 'release-assets.githubusercontent.com' ([Errno 11001] getaddrinfo failed)"))

@@ -11,7 +11,85 @@ let inspectionFilename = "inspection.jpg"
 const date = value => new Date(value).toLocaleString('zh-CN', {hour12:false})
 const selectedTargets = new Set()
 let overlaysVisible = true
+const imageView = {zoom:1, x:0, y:0, brightness:100}
+let imageDrag = null
 let currentPage = 'work', reviewOrigin = 'work', batchOrigin = 'processing'
+
+function updateImageView() {
+  const frame = $('frame'), img = $('photo')
+  if (img.naturalWidth && frame.clientWidth && frame.clientHeight) {
+    const ratio = Math.min(frame.clientWidth/img.naturalWidth, frame.clientHeight/img.naturalHeight)
+    const maxX = Math.max(0, (img.naturalWidth*ratio*imageView.zoom-frame.clientWidth)/2)
+    const maxY = Math.max(0, (img.naturalHeight*ratio*imageView.zoom-frame.clientHeight)/2)
+    imageView.x = Math.max(-maxX, Math.min(maxX, imageView.x))
+    imageView.y = Math.max(-maxY, Math.min(maxY, imageView.y))
+  }
+  $('imageSurface').style.transform = `translate(${imageView.x}px,${imageView.y}px) scale(${imageView.zoom})`
+  img.style.filter = `brightness(${imageView.brightness}%)`
+  frame.classList.toggle('can-pan', imageView.zoom > 1)
+  $('imageZoomValue').textContent = Math.round(imageView.zoom*100)+'%'
+  $('imageZoomOut').disabled = imageView.zoom <= .5
+  $('imageZoomIn').disabled = imageView.zoom >= 8
+  $('imageBrightness').value = imageView.brightness
+  $('imageBrightnessValue').textContent = imageView.brightness+'%'
+  drawLeaders()
+}
+function zoomImage(factor, point) {
+  const next = Math.max(.5, Math.min(8, imageView.zoom*factor))
+  const anchor = point || {x:0,y:0}
+  imageView.x = anchor.x-(anchor.x-imageView.x)*next/imageView.zoom
+  imageView.y = anchor.y-(anchor.y-imageView.y)*next/imageView.zoom
+  imageView.zoom = next
+  updateImageView()
+}
+function fitImage() {
+  imageView.zoom = 1
+  imageView.x = imageView.y = 0
+  updateImageView()
+}
+$('imageZoomIn').onclick = () => zoomImage(1.25)
+$('imageZoomOut').onclick = () => zoomImage(1/1.25)
+$('imageFit').onclick = fitImage
+$('imageBrightness').oninput = event => {
+  imageView.brightness = Number(event.target.value)
+  updateImageView()
+}
+$('imageShowSites').onchange = draw
+$('imageViewReset').onclick = () => {
+  imageView.brightness = 100
+  $('imageShowSites').checked = true
+  overlaysVisible = true
+  updateOverlayButton()
+  fitImage()
+  draw()
+}
+$('frame').addEventListener('wheel', event => {
+  if (event.target.closest('.inspection-view-tools') || !event.deltaY) return
+  event.preventDefault()
+  const rect = $('frame').getBoundingClientRect()
+  zoomImage(event.deltaY < 0 ? 1.2 : 1/1.2, {
+    x:event.clientX-rect.left-rect.width/2, y:event.clientY-rect.top-rect.height/2,
+  })
+}, {passive:false})
+$('frame').addEventListener('pointerdown', event => {
+  if (event.button !== 0 || !event.isPrimary || imageView.zoom <= 1 || event.target.closest('button,input,label,.inspection-view-tools')) return
+  imageDrag = {id:event.pointerId, x:event.clientX, y:event.clientY, originX:imageView.x, originY:imageView.y}
+  $('frame').setPointerCapture(event.pointerId)
+  $('frame').classList.add('is-panning')
+})
+$('frame').addEventListener('pointermove', event => {
+  if (!imageDrag || imageDrag.id !== event.pointerId) return
+  imageView.x = imageDrag.originX+event.clientX-imageDrag.x
+  imageView.y = imageDrag.originY+event.clientY-imageDrag.y
+  updateImageView()
+})
+function endImageDrag(event) {
+  if (!imageDrag || imageDrag.id !== event.pointerId) return
+  imageDrag = null
+  $('frame').classList.remove('is-panning')
+  if ($('frame').hasPointerCapture(event.pointerId)) $('frame').releasePointerCapture(event.pointerId)
+}
+for (const name of ['pointerup','pointercancel','lostpointercapture']) $('frame').addEventListener(name,endImageDrag)
 
 function toggleTarget(index) {
   if (selectedTargets.has(index)) selectedTargets.delete(index)
@@ -47,13 +125,14 @@ function stopCamera() {
 function draw() {
   const img = $('photo'), layer = $('marks')
   if (!img.naturalWidth) return
-  const frame = $('frame').getBoundingClientRect()
+  const frame = {width:$('frame').clientWidth, height:$('frame').clientHeight}
+  if (!frame.width || !frame.height) return
   const ratio = Math.min(frame.width/img.naturalWidth, frame.height/img.naturalHeight)
   const width = img.naturalWidth*ratio, height = img.naturalHeight*ratio
   Object.assign(layer.style, {width:width+'px', height:height+'px',
     left:(frame.width-width)/2+'px', top:(frame.height-height)/2+'px'})
   layer.replaceChildren()
-  for (const site of currentInspection?.sites || []){
+  for (const site of ($('imageShowSites').checked ? currentInspection?.sites || [] : [])){
     const [x1,y1,x2,y2]=site.rect
     const mark=document.createElement('div')
     mark.className='inspection-site'
@@ -77,7 +156,7 @@ function draw() {
     layer.append(mark)
   })
   layer.hidden = !overlaysVisible
-  drawLeaders()
+  updateImageView()
 }
 function drawLeaders() {
   const canvas = $('leaders'), viewer = $('viewer').getBoundingClientRect()
@@ -96,9 +175,11 @@ function drawLeaders() {
     const target = boxes[index]
     if (!target) continue
     const a = target.getBoundingClientRect(), b = label.getBoundingClientRect()
+    const imageFrame = $('frame').getBoundingClientRect()
+    if (a.right <= imageFrame.left || a.left >= imageFrame.right || a.bottom <= imageFrame.top || a.top >= imageFrame.bottom) continue
     if (b.top < rail.top || b.bottom > rail.bottom+1) continue
-    const x1 = (below ? a.left : a.right)-viewer.left
-    const y1 = (a.top+a.bottom)/2-viewer.top
+    const x1 = Math.max(imageFrame.left, Math.min(imageFrame.right, below ? a.left : a.right))-viewer.left
+    const y1 = Math.max(imageFrame.top, Math.min(imageFrame.bottom, (a.top+a.bottom)/2))-viewer.top
     const x2 = (below ? (b.left+b.right)/2 : b.left)-viewer.left
     const y2 = (below ? b.top : (b.top+b.bottom)/2)-viewer.top
     ctx.strokeStyle = '#38bdf8'
@@ -195,10 +276,13 @@ $('clearTargets').onclick = () => {
   updateSelection()
   draw()
 }
-$('overlays').onclick = () => {
-  overlaysVisible = !overlaysVisible
+function updateOverlayButton() {
   $('overlays').setAttribute('aria-pressed',String(overlaysVisible))
   $('overlays').textContent = overlaysVisible ? '标注已开启' : '标注已关闭'
+}
+$('overlays').onclick = () => {
+  overlaysVisible = !overlaysVisible
+  updateOverlayButton()
   draw()
 }
 $('expand').onclick = async () => {

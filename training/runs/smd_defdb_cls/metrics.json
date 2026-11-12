@@ -1,0 +1,3804 @@
+{
+ "card": {
+  "version": "smd-defdb-v1",
+  "created": "2026-11-10T17:48:44+08:00",
+  "weights": "smd_defect_cls_v1.pt",
+  "imgsz": 224,
+  "threshold": 0.05,
+  "classes": [
+   "damaged_component",
+   "excess_solder",
+   "good_solder",
+   "misaligned_component",
+   "missing_component",
+   "poor_solder",
+   "solder_bridge"
+  ],
+  "labels": {
+   "damaged_component": "焊盘/元件损伤",
+   "excess_solder": "多锡",
+   "good_solder": "未见明显缺陷",
+   "misaligned_component": "元件偏移",
+   "missing_component": "缺件",
+   "poor_solder": "虚焊/冷焊",
+   "solder_bridge": "桥接"
+  },
+  "metrics": {
+   "top1": 0.6708,
+   "top5": 0.9833,
+   "val_top1": 0.6357,
+   "val_top5": 1.0,
+   "test_images": 240,
+   "defect_precision": 1.0,
+   "defect_recall": 0.9429,
+   "defect_f1": 0.9706,
+   "defect_accuracy": 0.95,
+   "per_class_recall": {
+    "damaged_component": 0.0,
+    "excess_solder": 1.0,
+    "good_solder": 1.0,
+    "misaligned_component": 0.7667,
+    "missing_component": 0.6,
+    "poor_solder": 1.0,
+    "solder_bridge": 0.25
+   },
+   "confusion_matrix": {
+    "damaged_component": {
+     "damaged_component": 0,
+     "excess_solder": 0,
+     "good_solder": 10,
+     "misaligned_component": 0,
+     "missing_component": 0,
+     "poor_solder": 10,
+     "solder_bridge": 10
+    },
+    "excess_solder": {
+     "damaged_component": 0,
+     "excess_solder": 40,
+     "good_solder": 0,
+     "misaligned_component": 0,
+     "missing_component": 0,
+     "poor_solder": 0,
+     "solder_bridge": 0
+    },
+    "good_solder": {
+     "damaged_component": 0,
+     "excess_solder": 0,
+     "good_solder": 30,
+     "misaligned_component": 0,
+     "missing_component": 0,
+     "poor_solder": 0,
+     "solder_bridge": 0
+    },
+    "misaligned_component": {
+     "damaged_component": 0,
+     "excess_solder": 1,
+     "good_solder": 0,
+     "misaligned_component": 23,
+     "missing_component": 1,
+     "poor_solder": 5,
+     "solder_bridge": 0
+    },
+    "missing_component": {
+     "damaged_component": 10,
+     "excess_solder": 0,
+     "good_solder": 0,
+     "misaligned_component": 1,
+     "missing_component": 18,
+     "poor_solder": 1,
+     "solder_bridge": 0
+    },
+    "poor_solder": {
+     "damaged_component": 0,
+     "excess_solder": 0,
+     "good_solder": 0,
+     "misaligned_component": 0,
+     "missing_component": 0,
+     "poor_solder": 40,
+     "solder_bridge": 0
+    },
+    "solder_bridge": {
+     "damaged_component": 0,
+     "excess_solder": 1,
+     "good_solder": 19,
+     "misaligned_component": 0,
+     "missing_component": 0,
+     "poor_solder": 10,
+     "solder_bridge": 10
+    }
+   }
+  },
+  "dataset": {
+   "name": "SMD DefDB (PCB SMD component)",
+   "doi": "10.5281/zenodo.20001570",
+   "url": "https://zenodo.org/records/20001570",
+   "license": "CC BY 4.0",
+   "images": 1190,
+   "classes": 7,
+   "split": "grouped by ten-image augmentation block, duplicate blocks merged; seed 20261110; train 810 / val 140 / test 240",
+   "train_images": 810,
+   "val_images": 140,
+   "test_images": 240
+  },
+  "training": {
+   "model": "yolo11n-cls.pt",
+   "epochs": 40,
+   "imgsz": 224,
+   "batch": 32,
+   "device": "cpu",
+   "patience": 10,
+   "optimizer": "auto (AdamW)",
+   "seconds": 966.2
+  }
+ },
+ "curve": [
+  {
+   "threshold": 0.05,
+   "precision": 1.0,
+   "recall": 0.9428571428571428,
+   "f1": 0.9705882352941176
+  },
+  {
+   "threshold": 0.06,
+   "precision": 1.0,
+   "recall": 0.9428571428571428,
+   "f1": 0.9705882352941176
+  },
+  {
+   "threshold": 0.07,
+   "precision": 1.0,
+   "recall": 0.9333333333333333,
+   "f1": 0.9655172413793104
+  },
+  {
+   "threshold": 0.08,
+   "precision": 1.0,
+   "recall": 0.9333333333333333,
+   "f1": 0.9655172413793104
+  },
+  {
+   "threshold": 0.09,
+   "precision": 1.0,
+   "recall": 0.9333333333333333,
+   "f1": 0.9655172413793104
+  },
+  {
+   "threshold": 0.1,
+   "precision": 1.0,
+   "recall": 0.9333333333333333,
+   "f1": 0.9655172413793104
+  },
+  {
+   "threshold": 0.11,
+   "precision": 1.0,
+   "recall": 0.9238095238095239,
+   "f1": 0.9603960396039605
+  },
+  {
+   "threshold": 0.12,
+   "precision": 1.0,
+   "recall": 0.9238095238095239,
+   "f1": 0.9603960396039605
+  },
+  {
+   "threshold": 0.13,
+   "precision": 1.0,
+   "recall": 0.9238095238095239,
+   "f1": 0.9603960396039605
+  },
+  {
+   "threshold": 0.14,
+   "precision": 1.0,
+   "recall": 0.9142857142857143,
+   "f1": 0.955223880597015
+  },
+  {
+   "threshold": 0.15,
+   "precision": 1.0,
+   "recall": 0.9047619047619048,
+   "f1": 0.9500000000000001
+  },
+  {
+   "threshold": 0.16,
+   "precision": 1.0,
+   "recall": 0.8952380952380953,
+   "f1": 0.9447236180904524
+  },
+  {
+   "threshold": 0.17,
+   "precision": 1.0,
+   "recall": 0.8952380952380953,
+   "f1": 0.9447236180904524
+  },
+  {
+   "threshold": 0.18,
+   "precision": 1.0,
+   "recall": 0.8952380952380953,
+   "f1": 0.9447236180904524
+  },
+  {
+   "threshold": 0.19,
+   "precision": 1.0,
+   "recall": 0.8952380952380953,
+   "f1": 0.9447236180904524
+  },
+  {
+   "threshold": 0.2,
+   "precision": 1.0,
+   "recall": 0.8952380952380953,
+   "f1": 0.9447236180904524
+  },
+  {
+   "threshold": 0.21,
+   "precision": 1.0,
+   "recall": 0.8952380952380953,
+   "f1": 0.9447236180904524
+  },
+  {
+   "threshold": 0.22,
+   "precision": 1.0,
+   "recall": 0.8952380952380953,
+   "f1": 0.9447236180904524
+  },
+  {
+   "threshold": 0.23,
+   "precision": 1.0,
+   "recall": 0.8952380952380953,
+   "f1": 0.9447236180904524
+  },
+  {
+   "threshold": 0.24,
+   "precision": 1.0,
+   "recall": 0.8952380952380953,
+   "f1": 0.9447236180904524
+  },
+  {
+   "threshold": 0.25,
+   "precision": 1.0,
+   "recall": 0.8952380952380953,
+   "f1": 0.9447236180904524
+  },
+  {
+   "threshold": 0.26,
+   "precision": 1.0,
+   "recall": 0.8952380952380953,
+   "f1": 0.9447236180904524
+  },
+  {
+   "threshold": 0.27,
+   "precision": 1.0,
+   "recall": 0.8952380952380953,
+   "f1": 0.9447236180904524
+  },
+  {
+   "threshold": 0.28,
+   "precision": 1.0,
+   "recall": 0.8952380952380953,
+   "f1": 0.9447236180904524
+  },
+  {
+   "threshold": 0.29,
+   "precision": 1.0,
+   "recall": 0.8857142857142857,
+   "f1": 0.9393939393939393
+  },
+  {
+   "threshold": 0.3,
+   "precision": 1.0,
+   "recall": 0.8857142857142857,
+   "f1": 0.9393939393939393
+  },
+  {
+   "threshold": 0.31,
+   "precision": 1.0,
+   "recall": 0.8761904761904762,
+   "f1": 0.934010152284264
+  },
+  {
+   "threshold": 0.32,
+   "precision": 1.0,
+   "recall": 0.8761904761904762,
+   "f1": 0.934010152284264
+  },
+  {
+   "threshold": 0.33,
+   "precision": 1.0,
+   "recall": 0.8761904761904762,
+   "f1": 0.934010152284264
+  },
+  {
+   "threshold": 0.34,
+   "precision": 1.0,
+   "recall": 0.8761904761904762,
+   "f1": 0.934010152284264
+  },
+  {
+   "threshold": 0.35,
+   "precision": 1.0,
+   "recall": 0.8761904761904762,
+   "f1": 0.934010152284264
+  },
+  {
+   "threshold": 0.36,
+   "precision": 1.0,
+   "recall": 0.8761904761904762,
+   "f1": 0.934010152284264
+  },
+  {
+   "threshold": 0.37,
+   "precision": 1.0,
+   "recall": 0.8761904761904762,
+   "f1": 0.934010152284264
+  },
+  {
+   "threshold": 0.38,
+   "precision": 1.0,
+   "recall": 0.8761904761904762,
+   "f1": 0.934010152284264
+  },
+  {
+   "threshold": 0.39,
+   "precision": 1.0,
+   "recall": 0.8761904761904762,
+   "f1": 0.934010152284264
+  },
+  {
+   "threshold": 0.4,
+   "precision": 1.0,
+   "recall": 0.8761904761904762,
+   "f1": 0.934010152284264
+  },
+  {
+   "threshold": 0.41,
+   "precision": 1.0,
+   "recall": 0.8666666666666667,
+   "f1": 0.9285714285714286
+  },
+  {
+   "threshold": 0.42,
+   "precision": 1.0,
+   "recall": 0.8666666666666667,
+   "f1": 0.9285714285714286
+  },
+  {
+   "threshold": 0.43,
+   "precision": 1.0,
+   "recall": 0.8666666666666667,
+   "f1": 0.9285714285714286
+  },
+  {
+   "threshold": 0.44,
+   "precision": 1.0,
+   "recall": 0.8666666666666667,
+   "f1": 0.9285714285714286
+  },
+  {
+   "threshold": 0.45,
+   "precision": 1.0,
+   "recall": 0.8666666666666667,
+   "f1": 0.9285714285714286
+  },
+  {
+   "threshold": 0.46,
+   "precision": 1.0,
+   "recall": 0.8666666666666667,
+   "f1": 0.9285714285714286
+  },
+  {
+   "threshold": 0.47,
+   "precision": 1.0,
+   "recall": 0.8666666666666667,
+   "f1": 0.9285714285714286
+  },
+  {
+   "threshold": 0.48,
+   "precision": 1.0,
+   "recall": 0.8666666666666667,
+   "f1": 0.9285714285714286
+  },
+  {
+   "threshold": 0.49,
+   "precision": 1.0,
+   "recall": 0.8666666666666667,
+   "f1": 0.9285714285714286
+  },
+  {
+   "threshold": 0.5,
+   "precision": 1.0,
+   "recall": 0.8666666666666667,
+   "f1": 0.9285714285714286
+  },
+  {
+   "threshold": 0.51,
+   "precision": 1.0,
+   "recall": 0.8666666666666667,
+   "f1": 0.9285714285714286
+  },
+  {
+   "threshold": 0.52,
+   "precision": 1.0,
+   "recall": 0.8666666666666667,
+   "f1": 0.9285714285714286
+  },
+  {
+   "threshold": 0.53,
+   "precision": 1.0,
+   "recall": 0.8666666666666667,
+   "f1": 0.9285714285714286
+  },
+  {
+   "threshold": 0.54,
+   "precision": 1.0,
+   "recall": 0.8666666666666667,
+   "f1": 0.9285714285714286
+  },
+  {
+   "threshold": 0.55,
+   "precision": 1.0,
+   "recall": 0.8666666666666667,
+   "f1": 0.9285714285714286
+  },
+  {
+   "threshold": 0.56,
+   "precision": 1.0,
+   "recall": 0.861904761904762,
+   "f1": 0.9258312020460359
+  },
+  {
+   "threshold": 0.57,
+   "precision": 1.0,
+   "recall": 0.861904761904762,
+   "f1": 0.9258312020460359
+  },
+  {
+   "threshold": 0.58,
+   "precision": 1.0,
+   "recall": 0.861904761904762,
+   "f1": 0.9258312020460359
+  },
+  {
+   "threshold": 0.59,
+   "precision": 1.0,
+   "recall": 0.861904761904762,
+   "f1": 0.9258312020460359
+  },
+  {
+   "threshold": 0.6,
+   "precision": 1.0,
+   "recall": 0.861904761904762,
+   "f1": 0.9258312020460359
+  },
+  {
+   "threshold": 0.61,
+   "precision": 1.0,
+   "recall": 0.861904761904762,
+   "f1": 0.9258312020460359
+  },
+  {
+   "threshold": 0.62,
+   "precision": 1.0,
+   "recall": 0.861904761904762,
+   "f1": 0.9258312020460359
+  },
+  {
+   "threshold": 0.63,
+   "precision": 1.0,
+   "recall": 0.861904761904762,
+   "f1": 0.9258312020460359
+  },
+  {
+   "threshold": 0.64,
+   "precision": 1.0,
+   "recall": 0.861904761904762,
+   "f1": 0.9258312020460359
+  },
+  {
+   "threshold": 0.65,
+   "precision": 1.0,
+   "recall": 0.8571428571428571,
+   "f1": 0.923076923076923
+  },
+  {
+   "threshold": 0.66,
+   "precision": 1.0,
+   "recall": 0.8571428571428571,
+   "f1": 0.923076923076923
+  },
+  {
+   "threshold": 0.67,
+   "precision": 1.0,
+   "recall": 0.8571428571428571,
+   "f1": 0.923076923076923
+  },
+  {
+   "threshold": 0.68,
+   "precision": 1.0,
+   "recall": 0.8571428571428571,
+   "f1": 0.923076923076923
+  },
+  {
+   "threshold": 0.69,
+   "precision": 1.0,
+   "recall": 0.8571428571428571,
+   "f1": 0.923076923076923
+  },
+  {
+   "threshold": 0.7,
+   "precision": 1.0,
+   "recall": 0.8571428571428571,
+   "f1": 0.923076923076923
+  },
+  {
+   "threshold": 0.71,
+   "precision": 1.0,
+   "recall": 0.8571428571428571,
+   "f1": 0.923076923076923
+  },
+  {
+   "threshold": 0.72,
+   "precision": 1.0,
+   "recall": 0.8571428571428571,
+   "f1": 0.923076923076923
+  },
+  {
+   "threshold": 0.73,
+   "precision": 1.0,
+   "recall": 0.8571428571428571,
+   "f1": 0.923076923076923
+  },
+  {
+   "threshold": 0.74,
+   "precision": 1.0,
+   "recall": 0.8571428571428571,
+   "f1": 0.923076923076923
+  },
+  {
+   "threshold": 0.75,
+   "precision": 1.0,
+   "recall": 0.8571428571428571,
+   "f1": 0.923076923076923
+  },
+  {
+   "threshold": 0.76,
+   "precision": 1.0,
+   "recall": 0.8571428571428571,
+   "f1": 0.923076923076923
+  },
+  {
+   "threshold": 0.77,
+   "precision": 1.0,
+   "recall": 0.8571428571428571,
+   "f1": 0.923076923076923
+  },
+  {
+   "threshold": 0.78,
+   "precision": 1.0,
+   "recall": 0.8571428571428571,
+   "f1": 0.923076923076923
+  },
+  {
+   "threshold": 0.79,
+   "precision": 1.0,
+   "recall": 0.8571428571428571,
+   "f1": 0.923076923076923
+  },
+  {
+   "threshold": 0.8,
+   "precision": 1.0,
+   "recall": 0.8571428571428571,
+   "f1": 0.923076923076923
+  },
+  {
+   "threshold": 0.81,
+   "precision": 1.0,
+   "recall": 0.8571428571428571,
+   "f1": 0.923076923076923
+  },
+  {
+   "threshold": 0.82,
+   "precision": 1.0,
+   "recall": 0.8571428571428571,
+   "f1": 0.923076923076923
+  },
+  {
+   "threshold": 0.83,
+   "precision": 1.0,
+   "recall": 0.8523809523809524,
+   "f1": 0.9203084832904883
+  },
+  {
+   "threshold": 0.84,
+   "precision": 1.0,
+   "recall": 0.8428571428571429,
+   "f1": 0.9147286821705426
+  },
+  {
+   "threshold": 0.85,
+   "precision": 1.0,
+   "recall": 0.8380952380952381,
+   "f1": 0.9119170984455958
+  },
+  {
+   "threshold": 0.86,
+   "precision": 1.0,
+   "recall": 0.8333333333333334,
+   "f1": 0.9090909090909091
+  },
+  {
+   "threshold": 0.87,
+   "precision": 1.0,
+   "recall": 0.8333333333333334,
+   "f1": 0.9090909090909091
+  },
+  {
+   "threshold": 0.88,
+   "precision": 1.0,
+   "recall": 0.8238095238095238,
+   "f1": 0.9033942558746736
+  },
+  {
+   "threshold": 0.89,
+   "precision": 1.0,
+   "recall": 0.8142857142857143,
+   "f1": 0.8976377952755905
+  },
+  {
+   "threshold": 0.9,
+   "precision": 1.0,
+   "recall": 0.8,
+   "f1": 0.888888888888889
+  },
+  {
+   "threshold": 0.91,
+   "precision": 1.0,
+   "recall": 0.7904761904761904,
+   "f1": 0.8829787234042553
+  },
+  {
+   "threshold": 0.92,
+   "precision": 1.0,
+   "recall": 0.7904761904761904,
+   "f1": 0.8829787234042553
+  },
+  {
+   "threshold": 0.93,
+   "precision": 1.0,
+   "recall": 0.7904761904761904,
+   "f1": 0.8829787234042553
+  },
+  {
+   "threshold": 0.94,
+   "precision": 1.0,
+   "recall": 0.780952380952381,
+   "f1": 0.877005347593583
+  },
+  {
+   "threshold": 0.95,
+   "precision": 1.0,
+   "recall": 0.7666666666666667,
+   "f1": 0.8679245283018869
+  }
+ ],
+ "predictions": [
+  {
+   "path": "damaged_component_000.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.007929445244371891,
+    "excess_solder": 0.0040331268683075905,
+    "good_solder": 0.9872232675552368,
+    "misaligned_component": 0.0003071092360187322,
+    "missing_component": 0.00012251416046638042,
+    "poor_solder": 9.162027708953246e-05,
+    "solder_bridge": 0.0002928391913883388
+   }
+  },
+  {
+   "path": "damaged_component_001.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.017025845125317574,
+    "excess_solder": 0.006062900647521019,
+    "good_solder": 0.9747500419616699,
+    "misaligned_component": 0.0009985256474465132,
+    "missing_component": 0.00046767431194894016,
+    "poor_solder": 0.0002997320261783898,
+    "solder_bridge": 0.0003953512932639569
+   }
+  },
+  {
+   "path": "damaged_component_002.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.01836578920483589,
+    "excess_solder": 0.005242583341896534,
+    "good_solder": 0.9739726185798645,
+    "misaligned_component": 0.0011539212428033352,
+    "missing_component": 0.0005363923846744001,
+    "poor_solder": 0.0002759668859653175,
+    "solder_bridge": 0.0004526657285168767
+   }
+  },
+  {
+   "path": "damaged_component_003.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.0022953939624130726,
+    "excess_solder": 0.0021348861046135426,
+    "good_solder": 0.9946538209915161,
+    "misaligned_component": 0.000514488376211375,
+    "missing_component": 0.00012750382302328944,
+    "poor_solder": 0.00011017543147318065,
+    "solder_bridge": 0.00016374920960515738
+   }
+  },
+  {
+   "path": "damaged_component_004.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.014093829318881035,
+    "excess_solder": 0.0036357962526381016,
+    "good_solder": 0.9804090261459351,
+    "misaligned_component": 0.0007873597205616534,
+    "missing_component": 0.00042547035263851285,
+    "poor_solder": 0.00022374061518348753,
+    "solder_bridge": 0.00042480157571844757
+   }
+  },
+  {
+   "path": "damaged_component_005.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.008591009303927422,
+    "excess_solder": 0.006702560465782881,
+    "good_solder": 0.9812003970146179,
+    "misaligned_component": 0.0014095791848376393,
+    "missing_component": 0.0007826251094229519,
+    "poor_solder": 0.00040328773320652544,
+    "solder_bridge": 0.0009105059434659779
+   }
+  },
+  {
+   "path": "damaged_component_006.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.005058171693235636,
+    "excess_solder": 0.0036999282892793417,
+    "good_solder": 0.9905125498771667,
+    "misaligned_component": 0.00017182520241476595,
+    "missing_component": 8.542383147869259e-05,
+    "poor_solder": 0.00011550616181921214,
+    "solder_bridge": 0.0003566591185517609
+   }
+  },
+  {
+   "path": "damaged_component_007.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.00495282793417573,
+    "excess_solder": 0.008333129808306694,
+    "good_solder": 0.9859602451324463,
+    "misaligned_component": 0.0002954963711090386,
+    "missing_component": 0.00012548969243653119,
+    "poor_solder": 7.597344665555283e-05,
+    "solder_bridge": 0.0002568602794781327
+   }
+  },
+  {
+   "path": "damaged_component_008.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.009046915918588638,
+    "excess_solder": 0.005194148514419794,
+    "good_solder": 0.9847320318222046,
+    "misaligned_component": 0.00036480213748291135,
+    "missing_component": 0.00016196543583646417,
+    "poor_solder": 0.00011099124822067097,
+    "solder_bridge": 0.00038910130388103426
+   }
+  },
+  {
+   "path": "damaged_component_009.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.0034996885806322098,
+    "excess_solder": 0.002313839038833976,
+    "good_solder": 0.9938653111457825,
+    "misaligned_component": 8.899048407329246e-05,
+    "missing_component": 3.276759889558889e-05,
+    "poor_solder": 4.2385057895444334e-05,
+    "solder_bridge": 0.0001570070890011266
+   }
+  },
+  {
+   "path": "damaged_component_030.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.020687302574515343,
+    "excess_solder": 0.00550486845895648,
+    "good_solder": 0.0005109432386234403,
+    "misaligned_component": 0.022488364949822426,
+    "missing_component": 0.02628035843372345,
+    "poor_solder": 0.9213052988052368,
+    "solder_bridge": 0.003222879720851779
+   }
+  },
+  {
+   "path": "damaged_component_031.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.011956950649619102,
+    "excess_solder": 0.007904516533017159,
+    "good_solder": 0.00047489715507254004,
+    "misaligned_component": 0.02107880637049675,
+    "missing_component": 0.02031531371176243,
+    "poor_solder": 0.9353974461555481,
+    "solder_bridge": 0.0028720200061798096
+   }
+  },
+  {
+   "path": "damaged_component_032.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.05819874256849289,
+    "excess_solder": 0.00621167803183198,
+    "good_solder": 0.0005156674887984991,
+    "misaligned_component": 0.0060759782791137695,
+    "missing_component": 0.025529589504003525,
+    "poor_solder": 0.8966270685195923,
+    "solder_bridge": 0.0068412343971431255
+   }
+  },
+  {
+   "path": "damaged_component_033.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.07761862874031067,
+    "excess_solder": 0.023395661264657974,
+    "good_solder": 0.005640288814902306,
+    "misaligned_component": 0.09077238291501999,
+    "missing_component": 0.05811088904738426,
+    "poor_solder": 0.6767824292182922,
+    "solder_bridge": 0.06767971068620682
+   }
+  },
+  {
+   "path": "damaged_component_034.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.07906366139650345,
+    "excess_solder": 0.020470935851335526,
+    "good_solder": 0.001142243156209588,
+    "misaligned_component": 0.014836168847978115,
+    "missing_component": 0.0517699234187603,
+    "poor_solder": 0.8266881704330444,
+    "solder_bridge": 0.006028933450579643
+   }
+  },
+  {
+   "path": "damaged_component_035.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.07175973057746887,
+    "excess_solder": 0.02595146745443344,
+    "good_solder": 0.002303289482370019,
+    "misaligned_component": 0.06210652366280556,
+    "missing_component": 0.026764722540974617,
+    "poor_solder": 0.793660581111908,
+    "solder_bridge": 0.017453674226999283
+   }
+  },
+  {
+   "path": "damaged_component_036.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.02453230507671833,
+    "excess_solder": 0.015352784655988216,
+    "good_solder": 0.00040883634937927127,
+    "misaligned_component": 0.00916671846061945,
+    "missing_component": 0.0074912672862410545,
+    "poor_solder": 0.9399202466011047,
+    "solder_bridge": 0.0031277891248464584
+   }
+  },
+  {
+   "path": "damaged_component_037.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.025942621752619743,
+    "excess_solder": 0.0067012254148721695,
+    "good_solder": 0.001230972120538354,
+    "misaligned_component": 0.023929916322231293,
+    "missing_component": 0.0694408118724823,
+    "poor_solder": 0.868787407875061,
+    "solder_bridge": 0.003966998774558306
+   }
+  },
+  {
+   "path": "damaged_component_038.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.01933317631483078,
+    "excess_solder": 0.00530125480145216,
+    "good_solder": 0.0004747941275127232,
+    "misaligned_component": 0.022472642362117767,
+    "missing_component": 0.02557213418185711,
+    "poor_solder": 0.9237496852874756,
+    "solder_bridge": 0.003096361178904772
+   }
+  },
+  {
+   "path": "damaged_component_039.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.12587600946426392,
+    "excess_solder": 0.049506060779094696,
+    "good_solder": 0.0011907190782949328,
+    "misaligned_component": 0.0812508836388588,
+    "missing_component": 0.04581598937511444,
+    "poor_solder": 0.6852530837059021,
+    "solder_bridge": 0.011107289232313633
+   }
+  },
+  {
+   "path": "damaged_component_060.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.14420336484909058,
+    "excess_solder": 0.07395660132169724,
+    "good_solder": 0.1489742398262024,
+    "misaligned_component": 0.06786417961120605,
+    "missing_component": 0.22532574832439423,
+    "poor_solder": 0.018745264038443565,
+    "solder_bridge": 0.3209306299686432
+   }
+  },
+  {
+   "path": "damaged_component_061.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.11410480737686157,
+    "excess_solder": 0.06693413853645325,
+    "good_solder": 0.12240289896726608,
+    "misaligned_component": 0.04648565500974655,
+    "missing_component": 0.17850978672504425,
+    "poor_solder": 0.013874472118914127,
+    "solder_bridge": 0.45768824219703674
+   }
+  },
+  {
+   "path": "damaged_component_062.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.11071261763572693,
+    "excess_solder": 0.03877486661076546,
+    "good_solder": 0.046008653938770294,
+    "misaligned_component": 0.02572082169353962,
+    "missing_component": 0.16478309035301208,
+    "poor_solder": 0.015370029024779797,
+    "solder_bridge": 0.598629891872406
+   }
+  },
+  {
+   "path": "damaged_component_063.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.3350324332714081,
+    "excess_solder": 0.03891439363360405,
+    "good_solder": 0.09611182659864426,
+    "misaligned_component": 0.02953767590224743,
+    "missing_component": 0.0973142459988594,
+    "poor_solder": 0.03515128046274185,
+    "solder_bridge": 0.3679381310939789
+   }
+  },
+  {
+   "path": "damaged_component_064.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.12817294895648956,
+    "excess_solder": 0.04924781247973442,
+    "good_solder": 0.06929159164428711,
+    "misaligned_component": 0.038231898099184036,
+    "missing_component": 0.14721865952014923,
+    "poor_solder": 0.01731274463236332,
+    "solder_bridge": 0.5505243539810181
+   }
+  },
+  {
+   "path": "damaged_component_065.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.16599315404891968,
+    "excess_solder": 0.09457220137119293,
+    "good_solder": 0.10352523624897003,
+    "misaligned_component": 0.03387536481022835,
+    "missing_component": 0.1003900095820427,
+    "poor_solder": 0.012490511871874332,
+    "solder_bridge": 0.4891534447669983
+   }
+  },
+  {
+   "path": "damaged_component_066.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.11095253378152847,
+    "excess_solder": 0.10426237434148788,
+    "good_solder": 0.16312909126281738,
+    "misaligned_component": 0.043522533029317856,
+    "missing_component": 0.2145344316959381,
+    "poor_solder": 0.023144226521253586,
+    "solder_bridge": 0.34045475721359253
+   }
+  },
+  {
+   "path": "damaged_component_067.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.11659058928489685,
+    "excess_solder": 0.03141813352704048,
+    "good_solder": 0.1171313151717186,
+    "misaligned_component": 0.06294780969619751,
+    "missing_component": 0.3194245398044586,
+    "poor_solder": 0.013263977132737637,
+    "solder_bridge": 0.33922362327575684
+   }
+  },
+  {
+   "path": "damaged_component_068.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.1437911093235016,
+    "excess_solder": 0.07639460265636444,
+    "good_solder": 0.1518263816833496,
+    "misaligned_component": 0.06511735916137695,
+    "missing_component": 0.22307054698467255,
+    "poor_solder": 0.0184787567704916,
+    "solder_bridge": 0.3213212788105011
+   }
+  },
+  {
+   "path": "damaged_component_069.jpg",
+   "truth": "damaged_component",
+   "probs": {
+    "damaged_component": 0.230216383934021,
+    "excess_solder": 0.042607951909303665,
+    "good_solder": 0.09971871227025986,
+    "misaligned_component": 0.03241971507668495,
+    "missing_component": 0.2762344777584076,
+    "poor_solder": 0.021960273385047913,
+    "solder_bridge": 0.29684239625930786
+   }
+  },
+  {
+   "path": "excess_solder_080.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.010971122421324253,
+    "excess_solder": 0.9647376537322998,
+    "good_solder": 0.003580545075237751,
+    "misaligned_component": 0.008315114304423332,
+    "missing_component": 0.002708125626668334,
+    "poor_solder": 0.006433396600186825,
+    "solder_bridge": 0.0032539870589971542
+   }
+  },
+  {
+   "path": "excess_solder_081.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.0102732228115201,
+    "excess_solder": 0.9683367013931274,
+    "good_solder": 0.004753727000206709,
+    "misaligned_component": 0.0061558205634355545,
+    "missing_component": 0.001893513253889978,
+    "poor_solder": 0.006180185358971357,
+    "solder_bridge": 0.0024068867787718773
+   }
+  },
+  {
+   "path": "excess_solder_082.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.020381508395075798,
+    "excess_solder": 0.9201681613922119,
+    "good_solder": 0.010559980757534504,
+    "misaligned_component": 0.02023233100771904,
+    "missing_component": 0.005178750026971102,
+    "poor_solder": 0.018881333991885185,
+    "solder_bridge": 0.004597868770360947
+   }
+  },
+  {
+   "path": "excess_solder_083.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.009530979208648205,
+    "excess_solder": 0.9734447002410889,
+    "good_solder": 0.0025184541009366512,
+    "misaligned_component": 0.004748374689370394,
+    "missing_component": 0.0011719608446583152,
+    "poor_solder": 0.006159083917737007,
+    "solder_bridge": 0.0024263570085167885
+   }
+  },
+  {
+   "path": "excess_solder_084.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.018477613106369972,
+    "excess_solder": 0.9301912784576416,
+    "good_solder": 0.00659599294885993,
+    "misaligned_component": 0.01574319787323475,
+    "missing_component": 0.005420732777565718,
+    "poor_solder": 0.018322451040148735,
+    "solder_bridge": 0.005248613655567169
+   }
+  },
+  {
+   "path": "excess_solder_085.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.005097316112369299,
+    "excess_solder": 0.9867082834243774,
+    "good_solder": 0.001395360566675663,
+    "misaligned_component": 0.0016271388158202171,
+    "missing_component": 0.0008435308700427413,
+    "poor_solder": 0.003655501175671816,
+    "solder_bridge": 0.0006729618762619793
+   }
+  },
+  {
+   "path": "excess_solder_086.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.013534463942050934,
+    "excess_solder": 0.9666140079498291,
+    "good_solder": 0.00862189568579197,
+    "misaligned_component": 0.0028328464832156897,
+    "missing_component": 0.002025909721851349,
+    "poor_solder": 0.003980244975537062,
+    "solder_bridge": 0.002390507608652115
+   }
+  },
+  {
+   "path": "excess_solder_087.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.02991768904030323,
+    "excess_solder": 0.8518781065940857,
+    "good_solder": 0.016418177634477615,
+    "misaligned_component": 0.058033525943756104,
+    "missing_component": 0.010760268196463585,
+    "poor_solder": 0.019447969272732735,
+    "solder_bridge": 0.013544391840696335
+   }
+  },
+  {
+   "path": "excess_solder_088.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.019558073952794075,
+    "excess_solder": 0.947393000125885,
+    "good_solder": 0.004141448996961117,
+    "misaligned_component": 0.009009519591927528,
+    "missing_component": 0.004795381333678961,
+    "poor_solder": 0.008883490227162838,
+    "solder_bridge": 0.0062191239558160305
+   }
+  },
+  {
+   "path": "excess_solder_089.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.051430970430374146,
+    "excess_solder": 0.8700922131538391,
+    "good_solder": 0.007265730295330286,
+    "misaligned_component": 0.010232562199234962,
+    "missing_component": 0.012452231720089912,
+    "poor_solder": 0.030261961743235588,
+    "solder_bridge": 0.01826423592865467
+   }
+  },
+  {
+   "path": "excess_solder_100.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.034202463924884796,
+    "excess_solder": 0.9439486265182495,
+    "good_solder": 0.0018616028828546405,
+    "misaligned_component": 0.006796529982239008,
+    "missing_component": 0.0026894269976764917,
+    "poor_solder": 0.004529253114014864,
+    "solder_bridge": 0.005972098093479872
+   }
+  },
+  {
+   "path": "excess_solder_101.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.025158314034342766,
+    "excess_solder": 0.9428468346595764,
+    "good_solder": 0.0015916223637759686,
+    "misaligned_component": 0.014919823966920376,
+    "missing_component": 0.0034928808454424143,
+    "poor_solder": 0.004122926387935877,
+    "solder_bridge": 0.007867595180869102
+   }
+  },
+  {
+   "path": "excess_solder_102.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.08362863212823868,
+    "excess_solder": 0.8146918416023254,
+    "good_solder": 0.009090935811400414,
+    "misaligned_component": 0.05487876012921333,
+    "missing_component": 0.007347527891397476,
+    "poor_solder": 0.017546677961945534,
+    "solder_bridge": 0.012815690599381924
+   }
+  },
+  {
+   "path": "excess_solder_103.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.08898993581533432,
+    "excess_solder": 0.8561329245567322,
+    "good_solder": 0.003707391209900379,
+    "misaligned_component": 0.014608734287321568,
+    "missing_component": 0.00389574421569705,
+    "poor_solder": 0.007494637742638588,
+    "solder_bridge": 0.025170709937810898
+   }
+  },
+  {
+   "path": "excess_solder_104.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.03534160554409027,
+    "excess_solder": 0.9071763753890991,
+    "good_solder": 0.006557483691722155,
+    "misaligned_component": 0.0255998857319355,
+    "missing_component": 0.007181773893535137,
+    "poor_solder": 0.009455284103751183,
+    "solder_bridge": 0.008687581866979599
+   }
+  },
+  {
+   "path": "excess_solder_105.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.03312747925519943,
+    "excess_solder": 0.9253118634223938,
+    "good_solder": 0.0019189524464309216,
+    "misaligned_component": 0.0198429636657238,
+    "missing_component": 0.0018992520635947585,
+    "poor_solder": 0.006152192130684853,
+    "solder_bridge": 0.011747208423912525
+   }
+  },
+  {
+   "path": "excess_solder_106.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.03539425879716873,
+    "excess_solder": 0.9351071715354919,
+    "good_solder": 0.003035695059224963,
+    "misaligned_component": 0.007355562411248684,
+    "missing_component": 0.0034936668816953897,
+    "poor_solder": 0.007318058516830206,
+    "solder_bridge": 0.00829565804451704
+   }
+  },
+  {
+   "path": "excess_solder_107.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.08662977069616318,
+    "excess_solder": 0.8677718043327332,
+    "good_solder": 0.0028213963378220797,
+    "misaligned_component": 0.01766723394393921,
+    "missing_component": 0.004923128057271242,
+    "poor_solder": 0.0061917477287352085,
+    "solder_bridge": 0.01399486605077982
+   }
+  },
+  {
+   "path": "excess_solder_108.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.04520294442772865,
+    "excess_solder": 0.9184067845344543,
+    "good_solder": 0.0030088936910033226,
+    "misaligned_component": 0.010320991277694702,
+    "missing_component": 0.005775902885943651,
+    "poor_solder": 0.007329463493078947,
+    "solder_bridge": 0.009955069050192833
+   }
+  },
+  {
+   "path": "excess_solder_109.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.2727956175804138,
+    "excess_solder": 0.6085253357887268,
+    "good_solder": 0.0024431049823760986,
+    "misaligned_component": 0.032036080956459045,
+    "missing_component": 0.018158691003918648,
+    "poor_solder": 0.0343618169426918,
+    "solder_bridge": 0.031679343432188034
+   }
+  },
+  {
+   "path": "excess_solder_130.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.006018198560923338,
+    "excess_solder": 0.9280180931091309,
+    "good_solder": 0.005031117238104343,
+    "misaligned_component": 0.030813656747341156,
+    "missing_component": 0.006359409540891647,
+    "poor_solder": 0.02107998915016651,
+    "solder_bridge": 0.002679553348571062
+   }
+  },
+  {
+   "path": "excess_solder_131.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.004747963976114988,
+    "excess_solder": 0.9407328367233276,
+    "good_solder": 0.005917130038142204,
+    "misaligned_component": 0.024244382977485657,
+    "missing_component": 0.004899077583104372,
+    "poor_solder": 0.016773981973528862,
+    "solder_bridge": 0.002684480743482709
+   }
+  },
+  {
+   "path": "excess_solder_132.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.03914180025458336,
+    "excess_solder": 0.7097640037536621,
+    "good_solder": 0.014770640060305595,
+    "misaligned_component": 0.17223824560642242,
+    "missing_component": 0.02152090333402157,
+    "poor_solder": 0.03624353185296059,
+    "solder_bridge": 0.00632085558027029
+   }
+  },
+  {
+   "path": "excess_solder_133.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.0399264320731163,
+    "excess_solder": 0.7582697868347168,
+    "good_solder": 0.04528915137052536,
+    "misaligned_component": 0.06996487826108932,
+    "missing_component": 0.014174684882164001,
+    "poor_solder": 0.037389591336250305,
+    "solder_bridge": 0.03498554974794388
+   }
+  },
+  {
+   "path": "excess_solder_134.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.06620919704437256,
+    "excess_solder": 0.7789536714553833,
+    "good_solder": 0.0203676950186491,
+    "misaligned_component": 0.08827301114797592,
+    "missing_component": 0.018942415714263916,
+    "poor_solder": 0.01570909470319748,
+    "solder_bridge": 0.01154501736164093
+   }
+  },
+  {
+   "path": "excess_solder_135.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.01641453616321087,
+    "excess_solder": 0.9006388783454895,
+    "good_solder": 0.010678798891603947,
+    "misaligned_component": 0.04430284723639488,
+    "missing_component": 0.0033073960803449154,
+    "poor_solder": 0.010366061702370644,
+    "solder_bridge": 0.014291500672698021
+   }
+  },
+  {
+   "path": "excess_solder_136.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.0047077517956495285,
+    "excess_solder": 0.976355791091919,
+    "good_solder": 0.0017936619697138667,
+    "misaligned_component": 0.005901507567614317,
+    "missing_component": 0.0022959441412240267,
+    "poor_solder": 0.0077069951221346855,
+    "solder_bridge": 0.0012382477289065719
+   }
+  },
+  {
+   "path": "excess_solder_137.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.022043006494641304,
+    "excess_solder": 0.5511059761047363,
+    "good_solder": 0.10747672617435455,
+    "misaligned_component": 0.22398479282855988,
+    "missing_component": 0.027186209335923195,
+    "poor_solder": 0.055224042385816574,
+    "solder_bridge": 0.012979250401258469
+   }
+  },
+  {
+   "path": "excess_solder_138.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.007493144832551479,
+    "excess_solder": 0.926160991191864,
+    "good_solder": 0.0025067003443837166,
+    "misaligned_component": 0.023779643699526787,
+    "missing_component": 0.012298492714762688,
+    "poor_solder": 0.02443409152328968,
+    "solder_bridge": 0.0033270404674112797
+   }
+  },
+  {
+   "path": "excess_solder_139.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.008268078789114952,
+    "excess_solder": 0.9601724147796631,
+    "good_solder": 0.0007507415721192956,
+    "misaligned_component": 0.006483951583504677,
+    "missing_component": 0.00793489906936884,
+    "poor_solder": 0.011755676008760929,
+    "solder_bridge": 0.00463417824357748
+   }
+  },
+  {
+   "path": "excess_solder_140.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.006018198560923338,
+    "excess_solder": 0.9280180931091309,
+    "good_solder": 0.005031117238104343,
+    "misaligned_component": 0.030813656747341156,
+    "missing_component": 0.006359409540891647,
+    "poor_solder": 0.02107998915016651,
+    "solder_bridge": 0.002679553348571062
+   }
+  },
+  {
+   "path": "excess_solder_141.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.004747963976114988,
+    "excess_solder": 0.9407328367233276,
+    "good_solder": 0.005917130038142204,
+    "misaligned_component": 0.024244382977485657,
+    "missing_component": 0.004899077583104372,
+    "poor_solder": 0.016773981973528862,
+    "solder_bridge": 0.002684480743482709
+   }
+  },
+  {
+   "path": "excess_solder_142.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.03914180025458336,
+    "excess_solder": 0.7097640037536621,
+    "good_solder": 0.014770640060305595,
+    "misaligned_component": 0.17223824560642242,
+    "missing_component": 0.02152090333402157,
+    "poor_solder": 0.03624353185296059,
+    "solder_bridge": 0.00632085558027029
+   }
+  },
+  {
+   "path": "excess_solder_143.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.0399264320731163,
+    "excess_solder": 0.7582697868347168,
+    "good_solder": 0.04528915137052536,
+    "misaligned_component": 0.06996487826108932,
+    "missing_component": 0.014174684882164001,
+    "poor_solder": 0.037389591336250305,
+    "solder_bridge": 0.03498554974794388
+   }
+  },
+  {
+   "path": "excess_solder_144.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.06620919704437256,
+    "excess_solder": 0.7789536714553833,
+    "good_solder": 0.0203676950186491,
+    "misaligned_component": 0.08827301114797592,
+    "missing_component": 0.018942415714263916,
+    "poor_solder": 0.01570909470319748,
+    "solder_bridge": 0.01154501736164093
+   }
+  },
+  {
+   "path": "excess_solder_145.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.01641453616321087,
+    "excess_solder": 0.9006388783454895,
+    "good_solder": 0.010678798891603947,
+    "misaligned_component": 0.04430284723639488,
+    "missing_component": 0.0033073960803449154,
+    "poor_solder": 0.010366061702370644,
+    "solder_bridge": 0.014291500672698021
+   }
+  },
+  {
+   "path": "excess_solder_146.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.0047077517956495285,
+    "excess_solder": 0.976355791091919,
+    "good_solder": 0.0017936619697138667,
+    "misaligned_component": 0.005901507567614317,
+    "missing_component": 0.0022959441412240267,
+    "poor_solder": 0.0077069951221346855,
+    "solder_bridge": 0.0012382477289065719
+   }
+  },
+  {
+   "path": "excess_solder_147.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.022043006494641304,
+    "excess_solder": 0.5511059761047363,
+    "good_solder": 0.10747672617435455,
+    "misaligned_component": 0.22398479282855988,
+    "missing_component": 0.027186209335923195,
+    "poor_solder": 0.055224042385816574,
+    "solder_bridge": 0.012979250401258469
+   }
+  },
+  {
+   "path": "excess_solder_148.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.007493144832551479,
+    "excess_solder": 0.926160991191864,
+    "good_solder": 0.0025067003443837166,
+    "misaligned_component": 0.023779643699526787,
+    "missing_component": 0.012298492714762688,
+    "poor_solder": 0.02443409152328968,
+    "solder_bridge": 0.0033270404674112797
+   }
+  },
+  {
+   "path": "excess_solder_149.jpg",
+   "truth": "excess_solder",
+   "probs": {
+    "damaged_component": 0.014169679023325443,
+    "excess_solder": 0.9065923094749451,
+    "good_solder": 0.00149027060251683,
+    "misaligned_component": 0.020152827724814415,
+    "missing_component": 0.016789961606264114,
+    "poor_solder": 0.026164932176470757,
+    "solder_bridge": 0.014639927074313164
+   }
+  },
+  {
+   "path": "good_solder_000.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.0011473827762529254,
+    "excess_solder": 0.0006670122384093702,
+    "good_solder": 0.9978365302085876,
+    "misaligned_component": 6.320449756458402e-05,
+    "missing_component": 0.00013366770872380584,
+    "poor_solder": 7.803507469361648e-05,
+    "solder_bridge": 7.425849616993219e-05
+   }
+  },
+  {
+   "path": "good_solder_001.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.0012349390890449286,
+    "excess_solder": 0.0004270678909961134,
+    "good_solder": 0.9979885816574097,
+    "misaligned_component": 5.123915252625011e-05,
+    "missing_component": 0.00013571089948527515,
+    "poor_solder": 8.117442484945059e-05,
+    "solder_bridge": 8.121500286506489e-05
+   }
+  },
+  {
+   "path": "good_solder_002.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.0010912992293015122,
+    "excess_solder": 0.0002550961507949978,
+    "good_solder": 0.9983386993408203,
+    "misaligned_component": 5.11381404066924e-05,
+    "missing_component": 0.00010132780880667269,
+    "poor_solder": 6.242976087378338e-05,
+    "solder_bridge": 0.0001000013726297766
+   }
+  },
+  {
+   "path": "good_solder_003.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.0017470773309469223,
+    "excess_solder": 0.0004612915508914739,
+    "good_solder": 0.9972725510597229,
+    "misaligned_component": 9.975435386877507e-05,
+    "missing_component": 0.00010985722474288195,
+    "poor_solder": 9.904216858558357e-05,
+    "solder_bridge": 0.00021039778948761523
+   }
+  },
+  {
+   "path": "good_solder_004.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.001469419221393764,
+    "excess_solder": 0.00020653560932260007,
+    "good_solder": 0.9979870319366455,
+    "misaligned_component": 4.984358020010404e-05,
+    "missing_component": 0.00011872361210407689,
+    "poor_solder": 6.491201202152297e-05,
+    "solder_bridge": 0.0001035385430441238
+   }
+  },
+  {
+   "path": "good_solder_005.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.0011306649539619684,
+    "excess_solder": 0.00030351034365594387,
+    "good_solder": 0.9983114004135132,
+    "misaligned_component": 4.961663216818124e-05,
+    "missing_component": 7.047394319670275e-05,
+    "poor_solder": 5.14890271006152e-05,
+    "solder_bridge": 8.27913245302625e-05
+   }
+  },
+  {
+   "path": "good_solder_006.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.0009480997105129063,
+    "excess_solder": 0.0006467232597060502,
+    "good_solder": 0.9979261159896851,
+    "misaligned_component": 4.6370263589778915e-05,
+    "missing_component": 0.0001966203417396173,
+    "poor_solder": 9.713086910778657e-05,
+    "solder_bridge": 0.0001389384997310117
+   }
+  },
+  {
+   "path": "good_solder_007.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.0011184249306097627,
+    "excess_solder": 0.0010132868774235249,
+    "good_solder": 0.9975022673606873,
+    "misaligned_component": 6.937980651855469e-05,
+    "missing_component": 0.00014727989037055522,
+    "poor_solder": 6.260702502913773e-05,
+    "solder_bridge": 8.671260002302006e-05
+   }
+  },
+  {
+   "path": "good_solder_008.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.0014714880380779505,
+    "excess_solder": 0.0008361194049939513,
+    "good_solder": 0.9972162246704102,
+    "misaligned_component": 8.228873775806278e-05,
+    "missing_component": 0.00019598174549173564,
+    "poor_solder": 0.0001021499338094145,
+    "solder_bridge": 9.566438529873267e-05
+   }
+  },
+  {
+   "path": "good_solder_009.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.0011256043799221516,
+    "excess_solder": 0.0005791807780042291,
+    "good_solder": 0.9977505803108215,
+    "misaligned_component": 8.142260048771277e-05,
+    "missing_component": 0.00017355367890559137,
+    "poor_solder": 0.0001421703491359949,
+    "solder_bridge": 0.00014753630966879427
+   }
+  },
+  {
+   "path": "good_solder_040.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.0009961767354980111,
+    "excess_solder": 0.00023885178961791098,
+    "good_solder": 0.9985371828079224,
+    "misaligned_component": 3.449456926318817e-05,
+    "missing_component": 2.496392698958516e-05,
+    "poor_solder": 3.513789488351904e-05,
+    "solder_bridge": 0.00013316754484549165
+   }
+  },
+  {
+   "path": "good_solder_041.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.0003360728151164949,
+    "excess_solder": 0.00014003693650010973,
+    "good_solder": 0.99943608045578,
+    "misaligned_component": 1.8684522729017772e-05,
+    "missing_component": 1.8165219444199465e-05,
+    "poor_solder": 1.8259148419019766e-05,
+    "solder_bridge": 3.2785606890683994e-05
+   }
+  },
+  {
+   "path": "good_solder_042.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.0006985190557315946,
+    "excess_solder": 0.00015782707487232983,
+    "good_solder": 0.9989301562309265,
+    "misaligned_component": 2.8483082132879645e-05,
+    "missing_component": 5.390092701418325e-05,
+    "poor_solder": 3.5626100725494325e-05,
+    "solder_bridge": 9.554481948725879e-05
+   }
+  },
+  {
+   "path": "good_solder_043.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.0002975421666633338,
+    "excess_solder": 9.492557728663087e-05,
+    "good_solder": 0.9995313882827759,
+    "misaligned_component": 1.1298463505227119e-05,
+    "missing_component": 1.5978839655872434e-05,
+    "poor_solder": 1.4165799257170875e-05,
+    "solder_bridge": 3.4627970308065414e-05
+   }
+  },
+  {
+   "path": "good_solder_044.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.00045133469393476844,
+    "excess_solder": 0.00014352532161865383,
+    "good_solder": 0.9992554783821106,
+    "misaligned_component": 2.3180609787232243e-05,
+    "missing_component": 3.945035132346675e-05,
+    "poor_solder": 1.9869332390953787e-05,
+    "solder_bridge": 6.709738954668865e-05
+   }
+  },
+  {
+   "path": "good_solder_045.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.00021421351993922144,
+    "excess_solder": 7.049388659652323e-05,
+    "good_solder": 0.9996553659439087,
+    "misaligned_component": 6.0635015870502684e-06,
+    "missing_component": 5.716141913580941e-06,
+    "poor_solder": 7.38636026653694e-06,
+    "solder_bridge": 4.0712326153879985e-05
+   }
+  },
+  {
+   "path": "good_solder_046.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.0012727042194455862,
+    "excess_solder": 0.0003187413967680186,
+    "good_solder": 0.9980667233467102,
+    "misaligned_component": 4.737351628136821e-05,
+    "missing_component": 4.942969826515764e-05,
+    "poor_solder": 7.737981650279835e-05,
+    "solder_bridge": 0.0001678120024735108
+   }
+  },
+  {
+   "path": "good_solder_047.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.0011071267072111368,
+    "excess_solder": 0.00022643667762167752,
+    "good_solder": 0.998332679271698,
+    "misaligned_component": 4.198703754809685e-05,
+    "missing_component": 3.0121440431685187e-05,
+    "poor_solder": 3.0530231015291065e-05,
+    "solder_bridge": 0.0002311620773980394
+   }
+  },
+  {
+   "path": "good_solder_048.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.0011408341815695167,
+    "excess_solder": 0.00025918296887539327,
+    "good_solder": 0.9983269572257996,
+    "misaligned_component": 3.853336602333002e-05,
+    "missing_component": 3.1563839002046734e-05,
+    "poor_solder": 4.414283830556087e-05,
+    "solder_bridge": 0.00015870408969931304
+   }
+  },
+  {
+   "path": "good_solder_049.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.0038366620428860188,
+    "excess_solder": 0.0010249530896544456,
+    "good_solder": 0.9942110776901245,
+    "misaligned_component": 0.0001660138223087415,
+    "missing_component": 0.000242721289396286,
+    "poor_solder": 0.0003210399008821696,
+    "solder_bridge": 0.0001975047925952822
+   }
+  },
+  {
+   "path": "good_solder_070.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.006752901244908571,
+    "excess_solder": 0.0014256061986088753,
+    "good_solder": 0.9913143515586853,
+    "misaligned_component": 0.00019915492157451808,
+    "missing_component": 0.00011548748443601653,
+    "poor_solder": 9.408794721821323e-05,
+    "solder_bridge": 9.855584357865155e-05
+   }
+  },
+  {
+   "path": "good_solder_071.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.016280192881822586,
+    "excess_solder": 0.0029420736245810986,
+    "good_solder": 0.9788029193878174,
+    "misaligned_component": 0.0009326375438831747,
+    "missing_component": 0.0004885163507424295,
+    "poor_solder": 0.000267375900875777,
+    "solder_bridge": 0.0002863612899091095
+   }
+  },
+  {
+   "path": "good_solder_072.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.0015893805539235473,
+    "excess_solder": 9.963039337890223e-05,
+    "good_solder": 0.9982556700706482,
+    "misaligned_component": 1.6420564861618914e-05,
+    "missing_component": 2.3431504814652726e-05,
+    "poor_solder": 9.967766345653217e-06,
+    "solder_bridge": 5.471577424032148e-06
+   }
+  },
+  {
+   "path": "good_solder_073.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.0018341537797823548,
+    "excess_solder": 0.0002638075966387987,
+    "good_solder": 0.9977558255195618,
+    "misaligned_component": 4.7412941057700664e-05,
+    "missing_component": 5.2204100938979536e-05,
+    "poor_solder": 3.106375515926629e-05,
+    "solder_bridge": 1.5464796888409182e-05
+   }
+  },
+  {
+   "path": "good_solder_074.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.0023318566381931305,
+    "excess_solder": 0.00022207642905414104,
+    "good_solder": 0.9973342418670654,
+    "misaligned_component": 3.036225461983122e-05,
+    "missing_component": 4.146862920606509e-05,
+    "poor_solder": 2.4981072783702984e-05,
+    "solder_bridge": 1.5086557141330559e-05
+   }
+  },
+  {
+   "path": "good_solder_075.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.011327067390084267,
+    "excess_solder": 0.0010606616269797087,
+    "good_solder": 0.9866227507591248,
+    "misaligned_component": 0.0003149914264213294,
+    "missing_component": 0.0004590326570905745,
+    "poor_solder": 0.00011825196270365268,
+    "solder_bridge": 9.731065802043304e-05
+   }
+  },
+  {
+   "path": "good_solder_076.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.004314274527132511,
+    "excess_solder": 0.0007896439055912197,
+    "good_solder": 0.9945854544639587,
+    "misaligned_component": 9.160871559288353e-05,
+    "missing_component": 7.044478843454272e-05,
+    "poor_solder": 6.412156653823331e-05,
+    "solder_bridge": 8.444349805358797e-05
+   }
+  },
+  {
+   "path": "good_solder_077.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.006389049347490072,
+    "excess_solder": 0.004772723186761141,
+    "good_solder": 0.9881888628005981,
+    "misaligned_component": 0.0002592193486634642,
+    "missing_component": 0.00014602435112465173,
+    "poor_solder": 0.00012216345930937678,
+    "solder_bridge": 0.00012186860112706199
+   }
+  },
+  {
+   "path": "good_solder_078.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.007700151298195124,
+    "excess_solder": 0.0017099219840019941,
+    "good_solder": 0.9900277256965637,
+    "misaligned_component": 0.00021568602824117988,
+    "missing_component": 0.00013329420471563935,
+    "poor_solder": 0.0001003886791295372,
+    "solder_bridge": 0.0001127102950704284
+   }
+  },
+  {
+   "path": "good_solder_079.jpg",
+   "truth": "good_solder",
+   "probs": {
+    "damaged_component": 0.004168518353253603,
+    "excess_solder": 0.000678056210745126,
+    "good_solder": 0.9949203133583069,
+    "misaligned_component": 8.547564357286319e-05,
+    "missing_component": 5.800086728413589e-05,
+    "poor_solder": 4.294167229090817e-05,
+    "solder_bridge": 4.6590783313149586e-05
+   }
+  },
+  {
+   "path": "misaligned_component_040.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.008819249458611012,
+    "excess_solder": 0.002285387134179473,
+    "good_solder": 0.0007943511591292918,
+    "misaligned_component": 0.7393816113471985,
+    "missing_component": 0.028910202905535698,
+    "poor_solder": 0.20209385454654694,
+    "solder_bridge": 0.017715368419885635
+   }
+  },
+  {
+   "path": "misaligned_component_041.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.009351255372166634,
+    "excess_solder": 0.002801475813612342,
+    "good_solder": 0.0011236481368541718,
+    "misaligned_component": 0.7168444395065308,
+    "missing_component": 0.048952095210552216,
+    "poor_solder": 0.20392084121704102,
+    "solder_bridge": 0.017006274312734604
+   }
+  },
+  {
+   "path": "misaligned_component_042.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.021762531250715256,
+    "excess_solder": 0.013493439182639122,
+    "good_solder": 0.0027132690884172916,
+    "misaligned_component": 0.4936094284057617,
+    "missing_component": 0.02743620239198208,
+    "poor_solder": 0.41769441962242126,
+    "solder_bridge": 0.02329069934785366
+   }
+  },
+  {
+   "path": "misaligned_component_043.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.024380341172218323,
+    "excess_solder": 0.0032205323223024607,
+    "good_solder": 0.0006686114938929677,
+    "misaligned_component": 0.5539158582687378,
+    "missing_component": 0.02027161233127117,
+    "poor_solder": 0.36195388436317444,
+    "solder_bridge": 0.03558912128210068
+   }
+  },
+  {
+   "path": "misaligned_component_044.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.019615700468420982,
+    "excess_solder": 0.013046913780272007,
+    "good_solder": 0.001601287629455328,
+    "misaligned_component": 0.43187645077705383,
+    "missing_component": 0.02930210530757904,
+    "poor_solder": 0.48513922095298767,
+    "solder_bridge": 0.01941823959350586
+   }
+  },
+  {
+   "path": "misaligned_component_045.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.015264526009559631,
+    "excess_solder": 0.006064321845769882,
+    "good_solder": 0.0005238237208686769,
+    "misaligned_component": 0.41600117087364197,
+    "missing_component": 0.012029370293021202,
+    "poor_solder": 0.5366751551628113,
+    "solder_bridge": 0.01344163529574871
+   }
+  },
+  {
+   "path": "misaligned_component_046.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.010870403610169888,
+    "excess_solder": 0.004420460667461157,
+    "good_solder": 0.0013240089174360037,
+    "misaligned_component": 0.5709481239318848,
+    "missing_component": 0.03316212072968483,
+    "poor_solder": 0.3391900956630707,
+    "solder_bridge": 0.04008468985557556
+   }
+  },
+  {
+   "path": "misaligned_component_047.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.012331419624388218,
+    "excess_solder": 0.0018804810242727399,
+    "good_solder": 0.001402860740199685,
+    "misaligned_component": 0.8209962248802185,
+    "missing_component": 0.04774674400687218,
+    "poor_solder": 0.09273479878902435,
+    "solder_bridge": 0.0229074414819479
+   }
+  },
+  {
+   "path": "misaligned_component_048.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.018652087077498436,
+    "excess_solder": 0.0030448122415691614,
+    "good_solder": 0.0009120156173594296,
+    "misaligned_component": 0.6431223154067993,
+    "missing_component": 0.06861615180969238,
+    "poor_solder": 0.2294473797082901,
+    "solder_bridge": 0.03620517626404762
+   }
+  },
+  {
+   "path": "misaligned_component_049.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.00951497070491314,
+    "excess_solder": 0.018618730828166008,
+    "good_solder": 0.001011384418234229,
+    "misaligned_component": 0.387823224067688,
+    "missing_component": 0.08225162327289581,
+    "poor_solder": 0.4834662973880768,
+    "solder_bridge": 0.017313815653324127
+   }
+  },
+  {
+   "path": "misaligned_component_080.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.00474675465375185,
+    "excess_solder": 0.002732965163886547,
+    "good_solder": 0.0006817891262471676,
+    "misaligned_component": 0.9051852822303772,
+    "missing_component": 0.01396628376096487,
+    "poor_solder": 0.059845272451639175,
+    "solder_bridge": 0.012841734103858471
+   }
+  },
+  {
+   "path": "misaligned_component_081.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.006641787942498922,
+    "excess_solder": 0.0027392362244427204,
+    "good_solder": 0.0009588719694875181,
+    "misaligned_component": 0.8951911330223083,
+    "missing_component": 0.015482884831726551,
+    "poor_solder": 0.056215908378362656,
+    "solder_bridge": 0.022770090028643608
+   }
+  },
+  {
+   "path": "misaligned_component_082.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.0023915732745081186,
+    "excess_solder": 0.0018286961130797863,
+    "good_solder": 0.0004497069166973233,
+    "misaligned_component": 0.9396361112594604,
+    "missing_component": 0.0037240134552121162,
+    "poor_solder": 0.04542865604162216,
+    "solder_bridge": 0.006541222333908081
+   }
+  },
+  {
+   "path": "misaligned_component_083.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.011619561351835728,
+    "excess_solder": 0.0011396659538149834,
+    "good_solder": 8.597495616413653e-05,
+    "misaligned_component": 0.833530843257904,
+    "missing_component": 0.00878190342336893,
+    "poor_solder": 0.13346129655838013,
+    "solder_bridge": 0.01138068363070488
+   }
+  },
+  {
+   "path": "misaligned_component_084.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.01369819138199091,
+    "excess_solder": 0.009895220398902893,
+    "good_solder": 0.0017719212919473648,
+    "misaligned_component": 0.7533607482910156,
+    "missing_component": 0.020196694880723953,
+    "poor_solder": 0.17118121683597565,
+    "solder_bridge": 0.02989601343870163
+   }
+  },
+  {
+   "path": "misaligned_component_085.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.005967988166958094,
+    "excess_solder": 0.0020213257521390915,
+    "good_solder": 0.00024151193792931736,
+    "misaligned_component": 0.7186887860298157,
+    "missing_component": 0.008971965871751308,
+    "poor_solder": 0.24147500097751617,
+    "solder_bridge": 0.022633401677012444
+   }
+  },
+  {
+   "path": "misaligned_component_086.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.007064959034323692,
+    "excess_solder": 0.0032653354573994875,
+    "good_solder": 0.0005127752083353698,
+    "misaligned_component": 0.7772545218467712,
+    "missing_component": 0.012779293581843376,
+    "poor_solder": 0.17746604979038239,
+    "solder_bridge": 0.021657047793269157
+   }
+  },
+  {
+   "path": "misaligned_component_087.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.005974732805043459,
+    "excess_solder": 0.002158667426556349,
+    "good_solder": 0.0010285460157319903,
+    "misaligned_component": 0.9223864674568176,
+    "missing_component": 0.02032954804599285,
+    "poor_solder": 0.03348207846283913,
+    "solder_bridge": 0.014639988541603088
+   }
+  },
+  {
+   "path": "misaligned_component_088.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.007679986301809549,
+    "excess_solder": 0.005078821908682585,
+    "good_solder": 0.0008369976421818137,
+    "misaligned_component": 0.8950238227844238,
+    "missing_component": 0.019583862274885178,
+    "poor_solder": 0.05230412632226944,
+    "solder_bridge": 0.01949230022728443
+   }
+  },
+  {
+   "path": "misaligned_component_089.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.006530210841447115,
+    "excess_solder": 0.011743731796741486,
+    "good_solder": 0.0005879931268282235,
+    "misaligned_component": 0.5994510650634766,
+    "missing_component": 0.018887728452682495,
+    "poor_solder": 0.3515757620334625,
+    "solder_bridge": 0.011223500594496727
+   }
+  },
+  {
+   "path": "misaligned_component_090.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.028541121631860733,
+    "excess_solder": 0.11808543652296066,
+    "good_solder": 0.00659024715423584,
+    "misaligned_component": 0.4200037121772766,
+    "missing_component": 0.23416373133659363,
+    "poor_solder": 0.17030499875545502,
+    "solder_bridge": 0.022310754284262657
+   }
+  },
+  {
+   "path": "misaligned_component_091.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.01858592964708805,
+    "excess_solder": 0.1057920753955841,
+    "good_solder": 0.0020740895997732878,
+    "misaligned_component": 0.5154550075531006,
+    "missing_component": 0.1189463660120964,
+    "poor_solder": 0.2047329843044281,
+    "solder_bridge": 0.03441351279616356
+   }
+  },
+  {
+   "path": "misaligned_component_092.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.030780067667365074,
+    "excess_solder": 0.11081549525260925,
+    "good_solder": 0.0035329977981746197,
+    "misaligned_component": 0.46112215518951416,
+    "missing_component": 0.10613931715488434,
+    "poor_solder": 0.2497531771659851,
+    "solder_bridge": 0.037856753915548325
+   }
+  },
+  {
+   "path": "misaligned_component_093.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.03050236403942108,
+    "excess_solder": 0.10541128367185593,
+    "good_solder": 0.0019669528119266033,
+    "misaligned_component": 0.2811998724937439,
+    "missing_component": 0.1023271456360817,
+    "poor_solder": 0.277334064245224,
+    "solder_bridge": 0.20125837624073029
+   }
+  },
+  {
+   "path": "misaligned_component_094.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.044229671359062195,
+    "excess_solder": 0.1185496523976326,
+    "good_solder": 0.004641626495867968,
+    "misaligned_component": 0.26966753602027893,
+    "missing_component": 0.20613035559654236,
+    "poor_solder": 0.27196189761161804,
+    "solder_bridge": 0.08481927216053009
+   }
+  },
+  {
+   "path": "misaligned_component_095.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.09888570755720139,
+    "excess_solder": 0.19356776773929596,
+    "good_solder": 0.0045013148337602615,
+    "misaligned_component": 0.2767360806465149,
+    "missing_component": 0.1510133445262909,
+    "poor_solder": 0.2038469761610031,
+    "solder_bridge": 0.07144888490438461
+   }
+  },
+  {
+   "path": "misaligned_component_096.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.051189664751291275,
+    "excess_solder": 0.2520519196987152,
+    "good_solder": 0.009580680169165134,
+    "misaligned_component": 0.1727730929851532,
+    "missing_component": 0.23239916563034058,
+    "poor_solder": 0.22575783729553223,
+    "solder_bridge": 0.056247614324092865
+   }
+  },
+  {
+   "path": "misaligned_component_097.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.02838275395333767,
+    "excess_solder": 0.0970614105463028,
+    "good_solder": 0.005277997348457575,
+    "misaligned_component": 0.4917650520801544,
+    "missing_component": 0.2418036013841629,
+    "poor_solder": 0.12134146690368652,
+    "solder_bridge": 0.014367705211043358
+   }
+  },
+  {
+   "path": "misaligned_component_098.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.03900053724646568,
+    "excess_solder": 0.12952958047389984,
+    "good_solder": 0.006444024387747049,
+    "misaligned_component": 0.29202407598495483,
+    "missing_component": 0.3605716824531555,
+    "poor_solder": 0.14892789721488953,
+    "solder_bridge": 0.023502197116613388
+   }
+  },
+  {
+   "path": "misaligned_component_099.jpg",
+   "truth": "misaligned_component",
+   "probs": {
+    "damaged_component": 0.0438053198158741,
+    "excess_solder": 0.10140711069107056,
+    "good_solder": 0.002871990203857422,
+    "misaligned_component": 0.1964821219444275,
+    "missing_component": 0.20262189209461212,
+    "poor_solder": 0.4086981415748596,
+    "solder_bridge": 0.04411336034536362
+   }
+  },
+  {
+   "path": "missing_component_040.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.18801501393318176,
+    "excess_solder": 0.04497925192117691,
+    "good_solder": 0.01530759409070015,
+    "misaligned_component": 0.20426461100578308,
+    "missing_component": 0.41758179664611816,
+    "poor_solder": 0.07367920130491257,
+    "solder_bridge": 0.05617256462574005
+   }
+  },
+  {
+   "path": "missing_component_041.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.15096022188663483,
+    "excess_solder": 0.043789468705654144,
+    "good_solder": 0.0066503421403467655,
+    "misaligned_component": 0.43786734342575073,
+    "missing_component": 0.2576451003551483,
+    "poor_solder": 0.06670793890953064,
+    "solder_bridge": 0.03637958690524101
+   }
+  },
+  {
+   "path": "missing_component_042.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.4252162277698517,
+    "excess_solder": 0.048290401697158813,
+    "good_solder": 0.029398538172245026,
+    "misaligned_component": 0.23642274737358093,
+    "missing_component": 0.18536856770515442,
+    "poor_solder": 0.04072059690952301,
+    "solder_bridge": 0.03458297625184059
+   }
+  },
+  {
+   "path": "missing_component_043.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.44635626673698425,
+    "excess_solder": 0.09614681452512741,
+    "good_solder": 0.007839293219149113,
+    "misaligned_component": 0.2054581493139267,
+    "missing_component": 0.10606595128774643,
+    "poor_solder": 0.05670333653688431,
+    "solder_bridge": 0.08143020421266556
+   }
+  },
+  {
+   "path": "missing_component_044.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.40625226497650146,
+    "excess_solder": 0.04176624119281769,
+    "good_solder": 0.0548391230404377,
+    "misaligned_component": 0.3159959316253662,
+    "missing_component": 0.11517108231782913,
+    "poor_solder": 0.028052084147930145,
+    "solder_bridge": 0.03792336955666542
+   }
+  },
+  {
+   "path": "missing_component_045.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.3948793411254883,
+    "excess_solder": 0.10244468599557877,
+    "good_solder": 0.007042899262160063,
+    "misaligned_component": 0.24776852130889893,
+    "missing_component": 0.07261311262845993,
+    "poor_solder": 0.0738019347190857,
+    "solder_bridge": 0.10144955664873123
+   }
+  },
+  {
+   "path": "missing_component_046.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.25988441705703735,
+    "excess_solder": 0.07534265518188477,
+    "good_solder": 0.013076137751340866,
+    "misaligned_component": 0.12233766168355942,
+    "missing_component": 0.3579273521900177,
+    "poor_solder": 0.09830896556377411,
+    "solder_bridge": 0.07312281429767609
+   }
+  },
+  {
+   "path": "missing_component_047.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.17492637038230896,
+    "excess_solder": 0.02229214645922184,
+    "good_solder": 0.03877168521285057,
+    "misaligned_component": 0.22984321415424347,
+    "missing_component": 0.38486072421073914,
+    "poor_solder": 0.07404044270515442,
+    "solder_bridge": 0.07526543736457825
+   }
+  },
+  {
+   "path": "missing_component_048.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.2562861442565918,
+    "excess_solder": 0.032397542148828506,
+    "good_solder": 0.00813006330281496,
+    "misaligned_component": 0.12613970041275024,
+    "missing_component": 0.47516363859176636,
+    "poor_solder": 0.05478224530816078,
+    "solder_bridge": 0.047100700438022614
+   }
+  },
+  {
+   "path": "missing_component_049.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.09663520008325577,
+    "excess_solder": 0.060085270553827286,
+    "good_solder": 0.005928226746618748,
+    "misaligned_component": 0.1709689199924469,
+    "missing_component": 0.6150739789009094,
+    "poor_solder": 0.03530009463429451,
+    "solder_bridge": 0.01600838080048561
+   }
+  },
+  {
+   "path": "missing_component_100.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.3162687122821808,
+    "excess_solder": 0.025018680840730667,
+    "good_solder": 0.020808851346373558,
+    "misaligned_component": 0.06268642097711563,
+    "missing_component": 0.5035130977630615,
+    "poor_solder": 0.0399390272796154,
+    "solder_bridge": 0.031765133142471313
+   }
+  },
+  {
+   "path": "missing_component_101.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.5424808263778687,
+    "excess_solder": 0.014092495664954185,
+    "good_solder": 0.01112663745880127,
+    "misaligned_component": 0.045018620789051056,
+    "missing_component": 0.26172974705696106,
+    "poor_solder": 0.10879835486412048,
+    "solder_bridge": 0.016753312200307846
+   }
+  },
+  {
+   "path": "missing_component_102.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.4927954077720642,
+    "excess_solder": 0.044054269790649414,
+    "good_solder": 0.03242211416363716,
+    "misaligned_component": 0.11265916377305984,
+    "missing_component": 0.23343686759471893,
+    "poor_solder": 0.05352766811847687,
+    "solder_bridge": 0.031104449182748795
+   }
+  },
+  {
+   "path": "missing_component_103.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.2835489511489868,
+    "excess_solder": 0.015651682391762733,
+    "good_solder": 0.004587765783071518,
+    "misaligned_component": 0.10377859324216843,
+    "missing_component": 0.3695356249809265,
+    "poor_solder": 0.15809553861618042,
+    "solder_bridge": 0.06480187922716141
+   }
+  },
+  {
+   "path": "missing_component_104.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.25237852334976196,
+    "excess_solder": 0.029277700930833817,
+    "good_solder": 0.043541669845581055,
+    "misaligned_component": 0.12123294919729233,
+    "missing_component": 0.4490559697151184,
+    "poor_solder": 0.08320339024066925,
+    "solder_bridge": 0.02130972221493721
+   }
+  },
+  {
+   "path": "missing_component_105.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.29686418175697327,
+    "excess_solder": 0.02252461016178131,
+    "good_solder": 0.0089563662186265,
+    "misaligned_component": 0.035734985023736954,
+    "missing_component": 0.14631204307079315,
+    "poor_solder": 0.4045141339302063,
+    "solder_bridge": 0.08509371429681778
+   }
+  },
+  {
+   "path": "missing_component_106.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.26202186942100525,
+    "excess_solder": 0.027792977169156075,
+    "good_solder": 0.006509542465209961,
+    "misaligned_component": 0.024917688220739365,
+    "missing_component": 0.6186518669128418,
+    "poor_solder": 0.03940499201416969,
+    "solder_bridge": 0.020701102912425995
+   }
+  },
+  {
+   "path": "missing_component_107.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.4033588469028473,
+    "excess_solder": 0.02627403847873211,
+    "good_solder": 0.06949658691883087,
+    "misaligned_component": 0.07056473195552826,
+    "missing_component": 0.36293962597846985,
+    "poor_solder": 0.03161641210317612,
+    "solder_bridge": 0.03574978560209274
+   }
+  },
+  {
+   "path": "missing_component_108.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.32866331934928894,
+    "excess_solder": 0.02171153388917446,
+    "good_solder": 0.014600283466279507,
+    "misaligned_component": 0.0649530366063118,
+    "missing_component": 0.49569693207740784,
+    "poor_solder": 0.03332458809018135,
+    "solder_bridge": 0.04105028137564659
+   }
+  },
+  {
+   "path": "missing_component_109.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.21893958747386932,
+    "excess_solder": 0.08942635357379913,
+    "good_solder": 0.0036888278555125,
+    "misaligned_component": 0.023664535954594612,
+    "missing_component": 0.5896779894828796,
+    "poor_solder": 0.06181793659925461,
+    "solder_bridge": 0.012784762308001518
+   }
+  },
+  {
+   "path": "missing_component_110.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.14547468721866608,
+    "excess_solder": 0.004216188099235296,
+    "good_solder": 0.031638339161872864,
+    "misaligned_component": 0.042387884110212326,
+    "missing_component": 0.7451193332672119,
+    "poor_solder": 0.018917955458164215,
+    "solder_bridge": 0.01224551536142826
+   }
+  },
+  {
+   "path": "missing_component_111.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.2283582240343094,
+    "excess_solder": 0.007997977547347546,
+    "good_solder": 0.05553190037608147,
+    "misaligned_component": 0.05136101692914963,
+    "missing_component": 0.6202501058578491,
+    "poor_solder": 0.02343854494392872,
+    "solder_bridge": 0.013062219135463238
+   }
+  },
+  {
+   "path": "missing_component_112.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.31516820192337036,
+    "excess_solder": 0.0164045337587595,
+    "good_solder": 0.17327843606472015,
+    "misaligned_component": 0.0205076914280653,
+    "missing_component": 0.3081301748752594,
+    "poor_solder": 0.07315009087324142,
+    "solder_bridge": 0.09336083382368088
+   }
+  },
+  {
+   "path": "missing_component_113.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.41378775238990784,
+    "excess_solder": 0.013407853431999683,
+    "good_solder": 0.03651248663663864,
+    "misaligned_component": 0.15785768628120422,
+    "missing_component": 0.2514725923538208,
+    "poor_solder": 0.04523289203643799,
+    "solder_bridge": 0.08172883093357086
+   }
+  },
+  {
+   "path": "missing_component_114.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.2812901735305786,
+    "excess_solder": 0.02540547214448452,
+    "good_solder": 0.11130725592374802,
+    "misaligned_component": 0.04971970617771149,
+    "missing_component": 0.40408384799957275,
+    "poor_solder": 0.0853814035654068,
+    "solder_bridge": 0.04281216487288475
+   }
+  },
+  {
+   "path": "missing_component_115.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.5050418376922607,
+    "excess_solder": 0.016803564503788948,
+    "good_solder": 0.16896821558475494,
+    "misaligned_component": 0.025886550545692444,
+    "missing_component": 0.09829387068748474,
+    "poor_solder": 0.047786448150873184,
+    "solder_bridge": 0.13721942901611328
+   }
+  },
+  {
+   "path": "missing_component_116.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.10853412002325058,
+    "excess_solder": 0.005231009796261787,
+    "good_solder": 0.023539163172245026,
+    "misaligned_component": 0.020139960572123528,
+    "missing_component": 0.8128926753997803,
+    "poor_solder": 0.015599561855196953,
+    "solder_bridge": 0.014063552021980286
+   }
+  },
+  {
+   "path": "missing_component_117.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.18287479877471924,
+    "excess_solder": 0.003861202858388424,
+    "good_solder": 0.12670329213142395,
+    "misaligned_component": 0.039055414497852325,
+    "missing_component": 0.6041081547737122,
+    "poor_solder": 0.023013845086097717,
+    "solder_bridge": 0.020383203402161598
+   }
+  },
+  {
+   "path": "missing_component_118.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.11387652158737183,
+    "excess_solder": 0.0026661697775125504,
+    "good_solder": 0.016254281625151634,
+    "misaligned_component": 0.021986547857522964,
+    "missing_component": 0.8172083497047424,
+    "poor_solder": 0.014230410568416119,
+    "solder_bridge": 0.013777658343315125
+   }
+  },
+  {
+   "path": "missing_component_119.jpg",
+   "truth": "missing_component",
+   "probs": {
+    "damaged_component": 0.04845524951815605,
+    "excess_solder": 0.0056555913761258125,
+    "good_solder": 0.003258341457694769,
+    "misaligned_component": 0.008574657142162323,
+    "missing_component": 0.9216586351394653,
+    "poor_solder": 0.010295894928276539,
+    "solder_bridge": 0.002101603662595153
+   }
+  },
+  {
+   "path": "poor_solder_040.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.002307503717020154,
+    "excess_solder": 9.803762077353895e-05,
+    "good_solder": 0.00034678418887779117,
+    "misaligned_component": 0.004816718865185976,
+    "missing_component": 0.00493902713060379,
+    "poor_solder": 0.959896981716156,
+    "solder_bridge": 0.027594957500696182
+   }
+  },
+  {
+   "path": "poor_solder_041.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.0024580173194408417,
+    "excess_solder": 0.0003705049748532474,
+    "good_solder": 0.00040831236401572824,
+    "misaligned_component": 0.011173423379659653,
+    "missing_component": 0.007787150330841541,
+    "poor_solder": 0.9638815522193909,
+    "solder_bridge": 0.013921001926064491
+   }
+  },
+  {
+   "path": "poor_solder_042.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.02130788005888462,
+    "excess_solder": 0.003184983041137457,
+    "good_solder": 0.013354816474020481,
+    "misaligned_component": 0.034418735653162,
+    "missing_component": 0.030794711783528328,
+    "poor_solder": 0.8359794020652771,
+    "solder_bridge": 0.0609593465924263
+   }
+  },
+  {
+   "path": "poor_solder_043.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.006968709174543619,
+    "excess_solder": 0.001300661126151681,
+    "good_solder": 0.0009690137230791152,
+    "misaligned_component": 0.018702805042266846,
+    "missing_component": 0.0035426814574748278,
+    "poor_solder": 0.9310457706451416,
+    "solder_bridge": 0.03747032210230827
+   }
+  },
+  {
+   "path": "poor_solder_044.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.01758023537695408,
+    "excess_solder": 0.007242240011692047,
+    "good_solder": 0.015881577506661415,
+    "misaligned_component": 0.028633156791329384,
+    "missing_component": 0.029811715707182884,
+    "poor_solder": 0.8617746829986572,
+    "solder_bridge": 0.03907637298107147
+   }
+  },
+  {
+   "path": "poor_solder_045.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.00391397625207901,
+    "excess_solder": 0.000647637527436018,
+    "good_solder": 0.0006586537347175181,
+    "misaligned_component": 0.014355387538671494,
+    "missing_component": 0.001883370103314519,
+    "poor_solder": 0.9511570930480957,
+    "solder_bridge": 0.027383944019675255
+   }
+  },
+  {
+   "path": "poor_solder_046.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.0016815040726214647,
+    "excess_solder": 0.00014608212222810835,
+    "good_solder": 0.0001313218381255865,
+    "misaligned_component": 0.0052733272314071655,
+    "missing_component": 0.0036589314695447683,
+    "poor_solder": 0.9670239686965942,
+    "solder_bridge": 0.0220849197357893
+   }
+  },
+  {
+   "path": "poor_solder_047.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.006887168623507023,
+    "excess_solder": 0.00015312833420466632,
+    "good_solder": 0.001971245976164937,
+    "misaligned_component": 0.013573414646089077,
+    "missing_component": 0.009400540962815285,
+    "poor_solder": 0.927716076374054,
+    "solder_bridge": 0.0402984544634819
+   }
+  },
+  {
+   "path": "poor_solder_048.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.004312561359256506,
+    "excess_solder": 0.0001656240492593497,
+    "good_solder": 0.00025905625079758465,
+    "misaligned_component": 0.00597533630207181,
+    "missing_component": 0.009617657400667667,
+    "poor_solder": 0.9437299370765686,
+    "solder_bridge": 0.0359397754073143
+   }
+  },
+  {
+   "path": "poor_solder_049.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.0022795097902417183,
+    "excess_solder": 0.0017540417611598969,
+    "good_solder": 0.0001692793593974784,
+    "misaligned_component": 0.011423999443650246,
+    "missing_component": 0.006632411386817694,
+    "poor_solder": 0.9721128940582275,
+    "solder_bridge": 0.005627802107483149
+   }
+  },
+  {
+   "path": "poor_solder_080.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.0007743352907709777,
+    "excess_solder": 0.00010654048674041405,
+    "good_solder": 4.0279901440953836e-05,
+    "misaligned_component": 0.007289850153028965,
+    "missing_component": 0.0010212038177996874,
+    "poor_solder": 0.9790645241737366,
+    "solder_bridge": 0.011703304015100002
+   }
+  },
+  {
+   "path": "poor_solder_081.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.004341276362538338,
+    "excess_solder": 0.0004358801816124469,
+    "good_solder": 0.0003423811576794833,
+    "misaligned_component": 0.019818905740976334,
+    "missing_component": 0.004634739365428686,
+    "poor_solder": 0.9255597591400146,
+    "solder_bridge": 0.04486706107854843
+   }
+  },
+  {
+   "path": "poor_solder_082.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.0024319267831742764,
+    "excess_solder": 0.001146947150118649,
+    "good_solder": 0.0008651333628222346,
+    "misaligned_component": 0.025406813248991966,
+    "missing_component": 0.0067807347513735294,
+    "poor_solder": 0.9551824331283569,
+    "solder_bridge": 0.008186026476323605
+   }
+  },
+  {
+   "path": "poor_solder_083.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.004255888517946005,
+    "excess_solder": 0.0004816307045985013,
+    "good_solder": 0.0006730839959345758,
+    "misaligned_component": 0.01096542552113533,
+    "missing_component": 0.004150572698563337,
+    "poor_solder": 0.9170011281967163,
+    "solder_bridge": 0.06247220188379288
+   }
+  },
+  {
+   "path": "poor_solder_084.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.0026639308780431747,
+    "excess_solder": 0.001431480166502297,
+    "good_solder": 0.001476737903431058,
+    "misaligned_component": 0.02107756957411766,
+    "missing_component": 0.006672488059848547,
+    "poor_solder": 0.9488846659660339,
+    "solder_bridge": 0.017793098464608192
+   }
+  },
+  {
+   "path": "poor_solder_085.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.006556427106261253,
+    "excess_solder": 0.0022264665458351374,
+    "good_solder": 0.002327019115909934,
+    "misaligned_component": 0.050960708409547806,
+    "missing_component": 0.004426259547472,
+    "poor_solder": 0.9173465967178345,
+    "solder_bridge": 0.016156503930687904
+   }
+  },
+  {
+   "path": "poor_solder_086.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.00035066192504018545,
+    "excess_solder": 0.0002093602524837479,
+    "good_solder": 2.8913722417200916e-05,
+    "misaligned_component": 0.007749337237328291,
+    "missing_component": 0.000847446674015373,
+    "poor_solder": 0.9808533191680908,
+    "solder_bridge": 0.009960923343896866
+   }
+  },
+  {
+   "path": "poor_solder_087.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.003783685155212879,
+    "excess_solder": 0.0002610996598377824,
+    "good_solder": 0.0003067657817155123,
+    "misaligned_component": 0.027970515191555023,
+    "missing_component": 0.0031619013752788305,
+    "poor_solder": 0.9409759640693665,
+    "solder_bridge": 0.02354012429714203
+   }
+  },
+  {
+   "path": "poor_solder_088.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.002011641627177596,
+    "excess_solder": 0.00019452301785349846,
+    "good_solder": 5.0076032493961975e-05,
+    "misaligned_component": 0.006256585940718651,
+    "missing_component": 0.0030628168024122715,
+    "poor_solder": 0.969468891620636,
+    "solder_bridge": 0.01895543746650219
+   }
+  },
+  {
+   "path": "poor_solder_089.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.0032337484881281853,
+    "excess_solder": 0.004348054062575102,
+    "good_solder": 0.00024092665989883244,
+    "misaligned_component": 0.01355400588363409,
+    "missing_component": 0.006316440179944038,
+    "poor_solder": 0.9540651440620422,
+    "solder_bridge": 0.01824171282351017
+   }
+  },
+  {
+   "path": "poor_solder_140.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.007142400834709406,
+    "excess_solder": 0.002538792323321104,
+    "good_solder": 0.0041746883653104305,
+    "misaligned_component": 0.03709878772497177,
+    "missing_component": 0.009784781374037266,
+    "poor_solder": 0.9188726544380188,
+    "solder_bridge": 0.02038794942200184
+   }
+  },
+  {
+   "path": "poor_solder_141.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.011000007390975952,
+    "excess_solder": 0.005909413564950228,
+    "good_solder": 0.006897921673953533,
+    "misaligned_component": 0.10527518391609192,
+    "missing_component": 0.0159709881991148,
+    "poor_solder": 0.7877787351608276,
+    "solder_bridge": 0.06716784089803696
+   }
+  },
+  {
+   "path": "poor_solder_142.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.019192107021808624,
+    "excess_solder": 0.0050283754244446754,
+    "good_solder": 0.0050415825098752975,
+    "misaligned_component": 0.04707039147615433,
+    "missing_component": 0.03574581816792488,
+    "poor_solder": 0.8600104451179504,
+    "solder_bridge": 0.027911320328712463
+   }
+  },
+  {
+   "path": "poor_solder_143.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.03590311482548714,
+    "excess_solder": 0.009850540198385715,
+    "good_solder": 0.0059916069731116295,
+    "misaligned_component": 0.02069353312253952,
+    "missing_component": 0.02182891219854355,
+    "poor_solder": 0.8846319317817688,
+    "solder_bridge": 0.02110028825700283
+   }
+  },
+  {
+   "path": "poor_solder_144.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.03252755478024483,
+    "excess_solder": 0.010795937851071358,
+    "good_solder": 0.007515691686421633,
+    "misaligned_component": 0.05691641569137573,
+    "missing_component": 0.0213591568171978,
+    "poor_solder": 0.8013271689414978,
+    "solder_bridge": 0.06955806165933609
+   }
+  },
+  {
+   "path": "poor_solder_145.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.017097121104598045,
+    "excess_solder": 0.002413938520476222,
+    "good_solder": 0.003844482358545065,
+    "misaligned_component": 0.038052577525377274,
+    "missing_component": 0.006698000710457563,
+    "poor_solder": 0.923733651638031,
+    "solder_bridge": 0.00816021952778101
+   }
+  },
+  {
+   "path": "poor_solder_146.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.0055140904150903225,
+    "excess_solder": 0.00416107103228569,
+    "good_solder": 0.0018769685411825776,
+    "misaligned_component": 0.030785154551267624,
+    "missing_component": 0.012144315987825394,
+    "poor_solder": 0.9240230917930603,
+    "solder_bridge": 0.021495359018445015
+   }
+  },
+  {
+   "path": "poor_solder_147.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.012074951082468033,
+    "excess_solder": 0.0020409240387380123,
+    "good_solder": 0.008300409652292728,
+    "misaligned_component": 0.05572471022605896,
+    "missing_component": 0.018872331827878952,
+    "poor_solder": 0.8867899179458618,
+    "solder_bridge": 0.01619674824178219
+   }
+  },
+  {
+   "path": "poor_solder_148.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.012125324457883835,
+    "excess_solder": 0.0037825964391231537,
+    "good_solder": 0.0036153383553028107,
+    "misaligned_component": 0.038403209298849106,
+    "missing_component": 0.02138177864253521,
+    "poor_solder": 0.8925438523292542,
+    "solder_bridge": 0.02814783714711666
+   }
+  },
+  {
+   "path": "poor_solder_149.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.012307049706578255,
+    "excess_solder": 0.05152273550629616,
+    "good_solder": 0.004650996997952461,
+    "misaligned_component": 0.042576272040605545,
+    "missing_component": 0.0366935208439827,
+    "poor_solder": 0.8313825726509094,
+    "solder_bridge": 0.020866798236966133
+   }
+  },
+  {
+   "path": "poor_solder_150.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.007142400834709406,
+    "excess_solder": 0.002538792323321104,
+    "good_solder": 0.0041746883653104305,
+    "misaligned_component": 0.03709878772497177,
+    "missing_component": 0.009784781374037266,
+    "poor_solder": 0.9188726544380188,
+    "solder_bridge": 0.02038794942200184
+   }
+  },
+  {
+   "path": "poor_solder_151.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.011000007390975952,
+    "excess_solder": 0.005909413564950228,
+    "good_solder": 0.006897921673953533,
+    "misaligned_component": 0.10527518391609192,
+    "missing_component": 0.0159709881991148,
+    "poor_solder": 0.7877787351608276,
+    "solder_bridge": 0.06716784089803696
+   }
+  },
+  {
+   "path": "poor_solder_152.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.019192107021808624,
+    "excess_solder": 0.0050283754244446754,
+    "good_solder": 0.0050415825098752975,
+    "misaligned_component": 0.04707039147615433,
+    "missing_component": 0.03574581816792488,
+    "poor_solder": 0.8600104451179504,
+    "solder_bridge": 0.027911320328712463
+   }
+  },
+  {
+   "path": "poor_solder_153.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.03590311482548714,
+    "excess_solder": 0.009850540198385715,
+    "good_solder": 0.0059916069731116295,
+    "misaligned_component": 0.02069353312253952,
+    "missing_component": 0.02182891219854355,
+    "poor_solder": 0.8846319317817688,
+    "solder_bridge": 0.02110028825700283
+   }
+  },
+  {
+   "path": "poor_solder_154.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.03252755478024483,
+    "excess_solder": 0.010795937851071358,
+    "good_solder": 0.007515691686421633,
+    "misaligned_component": 0.05691641569137573,
+    "missing_component": 0.0213591568171978,
+    "poor_solder": 0.8013271689414978,
+    "solder_bridge": 0.06955806165933609
+   }
+  },
+  {
+   "path": "poor_solder_155.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.017097121104598045,
+    "excess_solder": 0.002413938520476222,
+    "good_solder": 0.003844482358545065,
+    "misaligned_component": 0.038052577525377274,
+    "missing_component": 0.006698000710457563,
+    "poor_solder": 0.923733651638031,
+    "solder_bridge": 0.00816021952778101
+   }
+  },
+  {
+   "path": "poor_solder_156.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.0055140904150903225,
+    "excess_solder": 0.00416107103228569,
+    "good_solder": 0.0018769685411825776,
+    "misaligned_component": 0.030785154551267624,
+    "missing_component": 0.012144315987825394,
+    "poor_solder": 0.9240230917930603,
+    "solder_bridge": 0.021495359018445015
+   }
+  },
+  {
+   "path": "poor_solder_157.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.012074951082468033,
+    "excess_solder": 0.0020409240387380123,
+    "good_solder": 0.008300409652292728,
+    "misaligned_component": 0.05572471022605896,
+    "missing_component": 0.018872331827878952,
+    "poor_solder": 0.8867899179458618,
+    "solder_bridge": 0.01619674824178219
+   }
+  },
+  {
+   "path": "poor_solder_158.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.012125324457883835,
+    "excess_solder": 0.0037825964391231537,
+    "good_solder": 0.0036153383553028107,
+    "misaligned_component": 0.038403209298849106,
+    "missing_component": 0.02138177864253521,
+    "poor_solder": 0.8925438523292542,
+    "solder_bridge": 0.02814783714711666
+   }
+  },
+  {
+   "path": "poor_solder_159.jpg",
+   "truth": "poor_solder",
+   "probs": {
+    "damaged_component": 0.00874064490199089,
+    "excess_solder": 0.03476251661777496,
+    "good_solder": 0.0015918717253953218,
+    "misaligned_component": 0.0253890510648489,
+    "missing_component": 0.034317925572395325,
+    "poor_solder": 0.8868347406387329,
+    "solder_bridge": 0.00836322084069252
+   }
+  },
+  {
+   "path": "solder_bridge_020.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.005633342079818249,
+    "excess_solder": 0.0003484633343759924,
+    "good_solder": 0.00010044527880381793,
+    "misaligned_component": 0.020169569179415703,
+    "missing_component": 0.008790318854153156,
+    "poor_solder": 0.9377856254577637,
+    "solder_bridge": 0.02717219851911068
+   }
+  },
+  {
+   "path": "solder_bridge_021.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.017946502193808556,
+    "excess_solder": 0.002412891248241067,
+    "good_solder": 0.0008962661377154291,
+    "misaligned_component": 0.09585588425397873,
+    "missing_component": 0.039459213614463806,
+    "poor_solder": 0.7965116500854492,
+    "solder_bridge": 0.04691759869456291
+   }
+  },
+  {
+   "path": "solder_bridge_022.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.021919922903180122,
+    "excess_solder": 0.005397916305810213,
+    "good_solder": 0.005757478065788746,
+    "misaligned_component": 0.12539616227149963,
+    "missing_component": 0.14591364562511444,
+    "poor_solder": 0.6517311930656433,
+    "solder_bridge": 0.04388366639614105
+   }
+  },
+  {
+   "path": "solder_bridge_023.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.012061058543622494,
+    "excess_solder": 0.002423373982310295,
+    "good_solder": 0.0003492057148832828,
+    "misaligned_component": 0.04644767940044403,
+    "missing_component": 0.029034215956926346,
+    "poor_solder": 0.8798782825469971,
+    "solder_bridge": 0.029806191101670265
+   }
+  },
+  {
+   "path": "solder_bridge_024.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.05872579291462898,
+    "excess_solder": 0.016125911846756935,
+    "good_solder": 0.024460842832922935,
+    "misaligned_component": 0.1387259066104889,
+    "missing_component": 0.16112194955348969,
+    "poor_solder": 0.5248268246650696,
+    "solder_bridge": 0.07601280510425568
+   }
+  },
+  {
+   "path": "solder_bridge_025.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.039949364960193634,
+    "excess_solder": 0.004589007701724768,
+    "good_solder": 0.0017505467403680086,
+    "misaligned_component": 0.10686671733856201,
+    "missing_component": 0.02369663491845131,
+    "poor_solder": 0.6886236667633057,
+    "solder_bridge": 0.13452409207820892
+   }
+  },
+  {
+   "path": "solder_bridge_026.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.005037146154791117,
+    "excess_solder": 0.00038042303640395403,
+    "good_solder": 7.868454849813133e-05,
+    "misaligned_component": 0.011428975500166416,
+    "missing_component": 0.008487029932439327,
+    "poor_solder": 0.9572070240974426,
+    "solder_bridge": 0.01738065667450428
+   }
+  },
+  {
+   "path": "solder_bridge_027.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.027442961931228638,
+    "excess_solder": 0.0017755799926817417,
+    "good_solder": 0.001655544270761311,
+    "misaligned_component": 0.12545238435268402,
+    "missing_component": 0.04584831744432449,
+    "poor_solder": 0.6258622407913208,
+    "solder_bridge": 0.1719629466533661
+   }
+  },
+  {
+   "path": "solder_bridge_028.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.010186493396759033,
+    "excess_solder": 0.0009343569981865585,
+    "good_solder": 0.00015634356532245874,
+    "misaligned_component": 0.03458334878087044,
+    "missing_component": 0.02105514146387577,
+    "poor_solder": 0.892727255821228,
+    "solder_bridge": 0.040357064455747604
+   }
+  },
+  {
+   "path": "solder_bridge_029.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.0020063789561390877,
+    "excess_solder": 0.0019124909304082394,
+    "good_solder": 0.00011407944839447737,
+    "misaligned_component": 0.06592513620853424,
+    "missing_component": 0.01509514544159174,
+    "poor_solder": 0.9070503115653992,
+    "solder_bridge": 0.00789640937000513
+   }
+  },
+  {
+   "path": "solder_bridge_090.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.05838928371667862,
+    "excess_solder": 0.03725885972380638,
+    "good_solder": 0.8987653255462646,
+    "misaligned_component": 0.0003869574284180999,
+    "missing_component": 0.0029311447869986296,
+    "poor_solder": 0.0010653483914211392,
+    "solder_bridge": 0.001203123014420271
+   }
+  },
+  {
+   "path": "solder_bridge_091.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.03264247253537178,
+    "excess_solder": 0.028470130637288094,
+    "good_solder": 0.9323524236679077,
+    "misaligned_component": 0.0005100801936350763,
+    "missing_component": 0.004249525722116232,
+    "poor_solder": 0.0007778065628372133,
+    "solder_bridge": 0.000997663475573063
+   }
+  },
+  {
+   "path": "solder_bridge_092.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.22447755932807922,
+    "excess_solder": 0.1271837055683136,
+    "good_solder": 0.5951411128044128,
+    "misaligned_component": 0.0025818562135100365,
+    "missing_component": 0.036394890397787094,
+    "poor_solder": 0.005284089595079422,
+    "solder_bridge": 0.008936788886785507
+   }
+  },
+  {
+   "path": "solder_bridge_093.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.015434320084750652,
+    "excess_solder": 0.04315546154975891,
+    "good_solder": 0.6969682574272156,
+    "misaligned_component": 0.00016926518583204597,
+    "missing_component": 0.0008178115240298212,
+    "poor_solder": 0.0006472627283073962,
+    "solder_bridge": 0.24280770123004913
+   }
+  },
+  {
+   "path": "solder_bridge_094.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.07208029925823212,
+    "excess_solder": 0.046493928879499435,
+    "good_solder": 0.8609989881515503,
+    "misaligned_component": 0.0008966202731244266,
+    "missing_component": 0.01356696616858244,
+    "poor_solder": 0.001428290270268917,
+    "solder_bridge": 0.004534870386123657
+   }
+  },
+  {
+   "path": "solder_bridge_095.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.05110754072666168,
+    "excess_solder": 0.1255546361207962,
+    "good_solder": 0.7198807597160339,
+    "misaligned_component": 0.0004898447659797966,
+    "missing_component": 0.0011064097052440047,
+    "poor_solder": 0.0016476496821269393,
+    "solder_bridge": 0.10021311789751053
+   }
+  },
+  {
+   "path": "solder_bridge_096.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.05785844475030899,
+    "excess_solder": 0.08876648545265198,
+    "good_solder": 0.8427131772041321,
+    "misaligned_component": 0.0004055546596646309,
+    "missing_component": 0.00653344951570034,
+    "poor_solder": 0.0020699992310255766,
+    "solder_bridge": 0.001652970677241683
+   }
+  },
+  {
+   "path": "solder_bridge_097.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.028051022440195084,
+    "excess_solder": 0.015547331422567368,
+    "good_solder": 0.9528338313102722,
+    "misaligned_component": 0.00029327519587241113,
+    "missing_component": 0.0010752512607723475,
+    "poor_solder": 0.0006474151159636676,
+    "solder_bridge": 0.0015519511653110385
+   }
+  },
+  {
+   "path": "solder_bridge_098.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.08118997514247894,
+    "excess_solder": 0.054593104869127274,
+    "good_solder": 0.8515879511833191,
+    "misaligned_component": 0.0005543052684515715,
+    "missing_component": 0.00714799715206027,
+    "poor_solder": 0.0022571978624910116,
+    "solder_bridge": 0.002669429872184992
+   }
+  },
+  {
+   "path": "solder_bridge_099.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.14789585769176483,
+    "excess_solder": 0.33474043011665344,
+    "good_solder": 0.445085734128952,
+    "misaligned_component": 0.0006846837932243943,
+    "missing_component": 0.06213013082742691,
+    "poor_solder": 0.005414510611444712,
+    "solder_bridge": 0.004048699978739023
+   }
+  },
+  {
+   "path": "solder_bridge_110.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.05838928371667862,
+    "excess_solder": 0.03725885972380638,
+    "good_solder": 0.8987653255462646,
+    "misaligned_component": 0.0003869574284180999,
+    "missing_component": 0.0029311447869986296,
+    "poor_solder": 0.0010653483914211392,
+    "solder_bridge": 0.001203123014420271
+   }
+  },
+  {
+   "path": "solder_bridge_111.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.03264247253537178,
+    "excess_solder": 0.028470130637288094,
+    "good_solder": 0.9323524236679077,
+    "misaligned_component": 0.0005100801936350763,
+    "missing_component": 0.004249525722116232,
+    "poor_solder": 0.0007778065628372133,
+    "solder_bridge": 0.000997663475573063
+   }
+  },
+  {
+   "path": "solder_bridge_112.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.22447755932807922,
+    "excess_solder": 0.1271837055683136,
+    "good_solder": 0.5951411128044128,
+    "misaligned_component": 0.0025818562135100365,
+    "missing_component": 0.036394890397787094,
+    "poor_solder": 0.005284089595079422,
+    "solder_bridge": 0.008936788886785507
+   }
+  },
+  {
+   "path": "solder_bridge_113.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.015434320084750652,
+    "excess_solder": 0.04315546154975891,
+    "good_solder": 0.6969682574272156,
+    "misaligned_component": 0.00016926518583204597,
+    "missing_component": 0.0008178115240298212,
+    "poor_solder": 0.0006472627283073962,
+    "solder_bridge": 0.24280770123004913
+   }
+  },
+  {
+   "path": "solder_bridge_114.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.07208029925823212,
+    "excess_solder": 0.046493928879499435,
+    "good_solder": 0.8609989881515503,
+    "misaligned_component": 0.0008966202731244266,
+    "missing_component": 0.01356696616858244,
+    "poor_solder": 0.001428290270268917,
+    "solder_bridge": 0.004534870386123657
+   }
+  },
+  {
+   "path": "solder_bridge_115.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.05110754072666168,
+    "excess_solder": 0.1255546361207962,
+    "good_solder": 0.7198807597160339,
+    "misaligned_component": 0.0004898447659797966,
+    "missing_component": 0.0011064097052440047,
+    "poor_solder": 0.0016476496821269393,
+    "solder_bridge": 0.10021311789751053
+   }
+  },
+  {
+   "path": "solder_bridge_116.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.05785844475030899,
+    "excess_solder": 0.08876648545265198,
+    "good_solder": 0.8427131772041321,
+    "misaligned_component": 0.0004055546596646309,
+    "missing_component": 0.00653344951570034,
+    "poor_solder": 0.0020699992310255766,
+    "solder_bridge": 0.001652970677241683
+   }
+  },
+  {
+   "path": "solder_bridge_117.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.028051022440195084,
+    "excess_solder": 0.015547331422567368,
+    "good_solder": 0.9528338313102722,
+    "misaligned_component": 0.00029327519587241113,
+    "missing_component": 0.0010752512607723475,
+    "poor_solder": 0.0006474151159636676,
+    "solder_bridge": 0.0015519511653110385
+   }
+  },
+  {
+   "path": "solder_bridge_118.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.08118997514247894,
+    "excess_solder": 0.054593104869127274,
+    "good_solder": 0.8515879511833191,
+    "misaligned_component": 0.0005543052684515715,
+    "missing_component": 0.00714799715206027,
+    "poor_solder": 0.0022571978624910116,
+    "solder_bridge": 0.002669429872184992
+   }
+  },
+  {
+   "path": "solder_bridge_119.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.1362844556570053,
+    "excess_solder": 0.457053542137146,
+    "good_solder": 0.3554377853870392,
+    "misaligned_component": 0.0006105756619945168,
+    "missing_component": 0.03977538272738457,
+    "poor_solder": 0.005092589650303125,
+    "solder_bridge": 0.0057456959038972855
+   }
+  },
+  {
+   "path": "solder_bridge_150.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.00021980007295496762,
+    "excess_solder": 0.00047208581236191094,
+    "good_solder": 0.002199491485953331,
+    "misaligned_component": 4.024221925646998e-05,
+    "missing_component": 0.00021527799253817648,
+    "poor_solder": 7.308095518965274e-05,
+    "solder_bridge": 0.9967800974845886
+   }
+  },
+  {
+   "path": "solder_bridge_151.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 6.352593482006341e-05,
+    "excess_solder": 0.00013434953871183097,
+    "good_solder": 0.0005255076102912426,
+    "misaligned_component": 1.312365202466026e-05,
+    "missing_component": 0.00010242748248856515,
+    "poor_solder": 1.6942436559475027e-05,
+    "solder_bridge": 0.9991440773010254
+   }
+  },
+  {
+   "path": "solder_bridge_152.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.008551730774343014,
+    "excess_solder": 0.00597382104024291,
+    "good_solder": 0.05215940624475479,
+    "misaligned_component": 0.0011277541052550077,
+    "missing_component": 0.009811758995056152,
+    "poor_solder": 0.0028037370648235083,
+    "solder_bridge": 0.9195718169212341
+   }
+  },
+  {
+   "path": "solder_bridge_153.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.002193550346419215,
+    "excess_solder": 0.0009070488158613443,
+    "good_solder": 0.029869092628359795,
+    "misaligned_component": 0.0003357139939907938,
+    "missing_component": 0.00736718624830246,
+    "poor_solder": 0.002755850786343217,
+    "solder_bridge": 0.9565715193748474
+   }
+  },
+  {
+   "path": "solder_bridge_154.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.0007654611254110932,
+    "excess_solder": 0.0005073666688986123,
+    "good_solder": 0.012687507085502148,
+    "misaligned_component": 0.00011437032662797719,
+    "missing_component": 0.0009117753943428397,
+    "poor_solder": 0.00022976112086325884,
+    "solder_bridge": 0.9847837686538696
+   }
+  },
+  {
+   "path": "solder_bridge_155.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.002441889140754938,
+    "excess_solder": 0.001135595259256661,
+    "good_solder": 0.012706970795989037,
+    "misaligned_component": 0.00028664589626714587,
+    "missing_component": 0.004261490888893604,
+    "poor_solder": 0.0010945973917841911,
+    "solder_bridge": 0.9780728220939636
+   }
+  },
+  {
+   "path": "solder_bridge_156.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.0006849746569059789,
+    "excess_solder": 0.0013373992405831814,
+    "good_solder": 0.0068081216886639595,
+    "misaligned_component": 9.168679389404133e-05,
+    "missing_component": 0.00040459397132508457,
+    "poor_solder": 0.00024936202680692077,
+    "solder_bridge": 0.990423858165741
+   }
+  },
+  {
+   "path": "solder_bridge_157.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.0015556496800854802,
+    "excess_solder": 0.001573917455971241,
+    "good_solder": 0.01694992370903492,
+    "misaligned_component": 0.0001692993100732565,
+    "missing_component": 0.0011635554255917668,
+    "poor_solder": 0.00022809211804997176,
+    "solder_bridge": 0.9783596396446228
+   }
+  },
+  {
+   "path": "solder_bridge_158.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.0002460144169162959,
+    "excess_solder": 0.0004407762025948614,
+    "good_solder": 0.0015474463580176234,
+    "misaligned_component": 3.077927976846695e-05,
+    "missing_component": 0.0002395295596215874,
+    "poor_solder": 6.680764636257663e-05,
+    "solder_bridge": 0.9974285960197449
+   }
+  },
+  {
+   "path": "solder_bridge_159.jpg",
+   "truth": "solder_bridge",
+   "probs": {
+    "damaged_component": 0.0007612449117004871,
+    "excess_solder": 0.0013864960055798292,
+    "good_solder": 0.0015320504317060113,
+    "misaligned_component": 6.205531826708466e-05,
+    "missing_component": 0.0008999119163490832,
+    "poor_solder": 0.00026670846273191273,
+    "solder_bridge": 0.9950915575027466
+   }
+  }
+ ]
+}

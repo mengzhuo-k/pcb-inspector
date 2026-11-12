@@ -1,0 +1,13 @@
+names:
+- missing_connection
+- poor_solder_virtual
+- poor_solder_cold
+- solder_bridge
+- pad_damage
+- component_shift
+- missing_component
+path: "C:\\Users\\32537\\Desktop\\\u5F00\u53D1\\pcb-inspector\\data\\platform\\runs\\\
+  6f5b0f6ca2ba409aa5391bc2f6b1d6f4\\dataset"
+test: images/test
+train: images/train
+val: images/val

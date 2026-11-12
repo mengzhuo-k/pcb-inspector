@@ -1,0 +1,230 @@
+{
+ "ok": true,
+ "metrics": {
+  "names": [
+   "missing_connection",
+   "poor_solder_virtual",
+   "poor_solder_cold",
+   "solder_bridge",
+   "pad_damage",
+   "component_shift",
+   "missing_component"
+  ],
+  "per_class": {
+   "missing_connection": {
+    "precision": null,
+    "recall": null,
+    "ap50": null,
+    "ap": null,
+    "support": 0,
+    "status": "未评估"
+   },
+   "poor_solder_virtual": {
+    "precision": null,
+    "recall": null,
+    "ap50": null,
+    "ap": null,
+    "support": 0,
+    "status": "未评估"
+   },
+   "poor_solder_cold": {
+    "precision": null,
+    "recall": null,
+    "ap50": null,
+    "ap": null,
+    "support": 0,
+    "status": "未评估"
+   },
+   "solder_bridge": {
+    "precision": null,
+    "recall": null,
+    "ap50": null,
+    "ap": null,
+    "support": 0,
+    "status": "未评估"
+   },
+   "pad_damage": {
+    "precision": null,
+    "recall": null,
+    "ap50": null,
+    "ap": null,
+    "support": 0,
+    "status": "未评估"
+   },
+   "component_shift": {
+    "precision": null,
+    "recall": null,
+    "ap50": null,
+    "ap": null,
+    "support": 0,
+    "status": "未评估"
+   },
+   "missing_component": {
+    "precision": null,
+    "recall": null,
+    "ap50": null,
+    "ap": null,
+    "support": 0,
+    "status": "未评估"
+   }
+  },
+  "val_images": 1,
+  "instances": 0,
+  "evaluation_status": "unavailable",
+  "map50": null,
+  "map": null,
+  "reason": "相同图片出现在多个划分，无法独立评估",
+  "test": {
+   "names": [
+    "missing_connection",
+    "poor_solder_virtual",
+    "poor_solder_cold",
+    "solder_bridge",
+    "pad_damage",
+    "component_shift",
+    "missing_component"
+   ],
+   "per_class": {
+    "missing_connection": {
+     "precision": null,
+     "recall": null,
+     "ap50": null,
+     "ap": null,
+     "support": 0,
+     "status": "未评估"
+    },
+    "poor_solder_virtual": {
+     "precision": null,
+     "recall": null,
+     "ap50": null,
+     "ap": null,
+     "support": 0,
+     "status": "未评估"
+    },
+    "poor_solder_cold": {
+     "precision": null,
+     "recall": null,
+     "ap50": null,
+     "ap": null,
+     "support": 0,
+     "status": "未评估"
+    },
+    "solder_bridge": {
+     "precision": null,
+     "recall": null,
+     "ap50": null,
+     "ap": null,
+     "support": 0,
+     "status": "未评估"
+    },
+    "pad_damage": {
+     "precision": null,
+     "recall": null,
+     "ap50": null,
+     "ap": null,
+     "support": 0,
+     "status": "未评估"
+    },
+    "component_shift": {
+     "precision": null,
+     "recall": null,
+     "ap50": null,
+     "ap": null,
+     "support": 0,
+     "status": "未评估"
+    },
+    "missing_component": {
+     "precision": null,
+     "recall": null,
+     "ap50": null,
+     "ap": null,
+     "support": 0,
+     "status": "未评估"
+    }
+   },
+   "val_images": 1,
+   "instances": 0,
+   "evaluation_status": "unavailable",
+   "map50": null,
+   "map": null,
+   "reason": "相同图片出现在多个划分，无法独立评估"
+  },
+  "baseline_version": "v5",
+  "baseline_test": {
+   "names": [
+    "missing_connection",
+    "poor_solder_virtual",
+    "poor_solder_cold",
+    "solder_bridge",
+    "pad_damage",
+    "component_shift",
+    "missing_component"
+   ],
+   "per_class": {
+    "missing_connection": {
+     "precision": null,
+     "recall": null,
+     "ap50": null,
+     "ap": null,
+     "support": 0,
+     "status": "未评估"
+    },
+    "poor_solder_virtual": {
+     "precision": null,
+     "recall": null,
+     "ap50": null,
+     "ap": null,
+     "support": 0,
+     "status": "未评估"
+    },
+    "poor_solder_cold": {
+     "precision": null,
+     "recall": null,
+     "ap50": null,
+     "ap": null,
+     "support": 0,
+     "status": "未评估"
+    },
+    "solder_bridge": {
+     "precision": null,
+     "recall": null,
+     "ap50": null,
+     "ap": null,
+     "support": 0,
+     "status": "未评估"
+    },
+    "pad_damage": {
+     "precision": null,
+     "recall": null,
+     "ap50": null,
+     "ap": null,
+     "support": 0,
+     "status": "未评估"
+    },
+    "component_shift": {
+     "precision": null,
+     "recall": null,
+     "ap50": null,
+     "ap": null,
+     "support": 0,
+     "status": "未评估"
+    },
+    "missing_component": {
+     "precision": null,
+     "recall": null,
+     "ap50": null,
+     "ap": null,
+     "support": 0,
+     "status": "未评估"
+    }
+   },
+   "val_images": 1,
+   "instances": 0,
+   "evaluation_status": "unavailable",
+   "map50": null,
+   "map": null,
+   "reason": "相同图片出现在多个划分，无法独立评估"
+  }
+ },
+ "threshold": 0.25
+}

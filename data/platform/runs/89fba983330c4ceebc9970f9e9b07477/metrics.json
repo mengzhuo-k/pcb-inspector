@@ -1,0 +1,62 @@
+{
+ "ok": true,
+ "metrics": {
+  "map50": 0.0,
+  "map": 0.0,
+  "per_class": {
+   "missing_connection": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "ap50": 0.0,
+    "ap": 0.0
+   },
+   "poor_solder_virtual": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "ap50": 0.0,
+    "ap": 0.0
+   },
+   "poor_solder_cold": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "ap50": 0.0,
+    "ap": 0.0
+   },
+   "solder_bridge": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "ap50": 0.0,
+    "ap": 0.0
+   },
+   "pad_damage": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "ap50": 0.0,
+    "ap": 0.0
+   },
+   "component_shift": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "ap50": 0.0,
+    "ap": 0.0
+   },
+   "missing_component": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "ap50": 0.0,
+    "ap": 0.0
+   }
+  },
+  "names": [
+   "missing_connection",
+   "poor_solder_virtual",
+   "poor_solder_cold",
+   "solder_bridge",
+   "pad_damage",
+   "component_shift",
+   "missing_component"
+  ],
+  "val_images": 0
+ },
+ "threshold": 0.5
+}

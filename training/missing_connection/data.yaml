@@ -1,0 +1,4 @@
+path: C:/Users/32537/Desktop/开发/pcb-inspector/training/missing_connection
+train: images/train
+val: images/train  # training-set diagnostics only
+names: [missing_connection]
