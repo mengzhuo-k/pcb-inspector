@@ -1,0 +1,39 @@
+{
+  "model_version": "v17",
+  "classification": {
+    "authoritative": true,
+    "defect_score": 0.1674,
+    "is_defect": false,
+    "key": "good_solder",
+    "label": "未见明显缺陷",
+    "model_sha256": "52c645ecc3f514b3f6b2ac38e740842a549b1244efa09e7e8817877c19a81230",
+    "model_version": "v17",
+    "point_model_sha256": "1f8f8757e6c40fb2911ad6a4bd46dc3d5a1c9d2922de2f92eb631f551a536823",
+    "point_model_version": "v9",
+    "score": 0.8326,
+    "threshold": 0.5,
+    "top": [
+      {
+        "key": "good_solder",
+        "label": "未见明显缺陷",
+        "score": 0.8326
+      },
+      {
+        "key": "damaged_component",
+        "label": "焊盘/元件损伤",
+        "score": 0.1555
+      },
+      {
+        "key": "poor_solder",
+        "label": "虚焊/冷焊",
+        "score": 0.0039
+      }
+    ]
+  },
+  "candidate_boxes": 1,
+  "sites": 173,
+  "issues": [
+    "点位辅助检测：必检类别缺少验证样本：missing_connection、poor_solder_virtual、poor_solder_cold、solder_bridge、pad_damage、component_shift、missing_component",
+    "点位辅助检测：新模型缺少有效的检测验证或独立测试结果，请人工复核"
+  ]
+}
