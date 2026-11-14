@@ -1,0 +1,136 @@
+{
+  "version": "smd-defdb-b039e99f",
+  "created": "2026-11-12T15:31:27+08:00",
+  "weights": "smd_defect_cls_b039e99f.pt",
+  "imgsz": 224,
+  "threshold": 0.5,
+  "classes": [
+    "damaged_component",
+    "excess_solder",
+    "good_solder",
+    "misaligned_component",
+    "missing_component",
+    "poor_solder",
+    "solder_bridge"
+  ],
+  "labels": {
+    "damaged_component": "焊盘/元件损伤",
+    "excess_solder": "多锡",
+    "good_solder": "未见明显缺陷",
+    "misaligned_component": "元件偏移",
+    "missing_component": "缺件",
+    "poor_solder": "虚焊/冷焊",
+    "solder_bridge": "桥接"
+  },
+  "metrics": {
+    "top1": 0.675,
+    "top5": 0.9917,
+    "val_top1": 0.65,
+    "val_top5": 1.0,
+    "test_images": 240,
+    "defect_precision": 1.0,
+    "defect_recall": 0.9524,
+    "defect_f1": 0.9756,
+    "defect_accuracy": 0.9583,
+    "per_class_recall": {
+      "damaged_component": 0.0333,
+      "excess_solder": 0.975,
+      "good_solder": 1.0,
+      "misaligned_component": 0.7667,
+      "missing_component": 0.4667,
+      "poor_solder": 1.0,
+      "solder_bridge": 0.375
+    },
+    "confusion_matrix": {
+      "damaged_component": {
+        "damaged_component": 1,
+        "excess_solder": 0,
+        "good_solder": 10,
+        "misaligned_component": 0,
+        "missing_component": 0,
+        "poor_solder": 10,
+        "solder_bridge": 9
+      },
+      "excess_solder": {
+        "damaged_component": 0,
+        "excess_solder": 39,
+        "good_solder": 0,
+        "misaligned_component": 1,
+        "missing_component": 0,
+        "poor_solder": 0,
+        "solder_bridge": 0
+      },
+      "good_solder": {
+        "damaged_component": 0,
+        "excess_solder": 0,
+        "good_solder": 30,
+        "misaligned_component": 0,
+        "missing_component": 0,
+        "poor_solder": 0,
+        "solder_bridge": 0
+      },
+      "misaligned_component": {
+        "damaged_component": 0,
+        "excess_solder": 5,
+        "good_solder": 0,
+        "misaligned_component": 23,
+        "missing_component": 1,
+        "poor_solder": 1,
+        "solder_bridge": 0
+      },
+      "missing_component": {
+        "damaged_component": 10,
+        "excess_solder": 0,
+        "good_solder": 0,
+        "misaligned_component": 6,
+        "missing_component": 14,
+        "poor_solder": 0,
+        "solder_bridge": 0
+      },
+      "poor_solder": {
+        "damaged_component": 0,
+        "excess_solder": 0,
+        "good_solder": 0,
+        "misaligned_component": 0,
+        "missing_component": 0,
+        "poor_solder": 40,
+        "solder_bridge": 0
+      },
+      "solder_bridge": {
+        "damaged_component": 16,
+        "excess_solder": 0,
+        "good_solder": 0,
+        "misaligned_component": 1,
+        "missing_component": 0,
+        "poor_solder": 8,
+        "solder_bridge": 15
+      }
+    }
+  },
+  "dataset": {
+    "name": "SMD DefDB (PCB SMD component)",
+    "doi": "10.5281/zenodo.20001570",
+    "url": "https://zenodo.org/records/20001570",
+    "license": "CC BY 4.0",
+    "images": 1190,
+    "classes": 7,
+    "split": "grouped by ten-image augmentation block, duplicate blocks merged; seed 20261110; train 810 / val 140 / test 240",
+    "train_images": 810,
+    "val_images": 140,
+    "test_images": 240
+  },
+  "training": {
+    "model": "yolo11n-cls.pt",
+    "epochs": 40,
+    "imgsz": 224,
+    "batch": 32,
+    "device": "cpu",
+    "patience": 12,
+    "optimizer": "auto (AdamW)",
+    "workers": 0,
+    "cache": "none",
+    "channels_last": false,
+    "threads": 8,
+    "seconds": 723.7
+  }
+}

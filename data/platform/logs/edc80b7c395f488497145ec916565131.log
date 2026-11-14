@@ -1,0 +1,181 @@
+Ultralytics 8.4.208  Python-3.11.9 torch-2.15.0+cpu CPU (12th Gen Intel Core i5-12500H)
+[34m[1mengine\trainer: [0magnostic_nms=False, amp=True, angle=1.0, augment=False, auto_augment=randaugment, batch=8, bgr=0.0, box=7.5, cache=False, cfg=None, channels_last=None, classes=None, close_mosaic=10, cls=0.5, cls_pw=0.0, cls_remap=True, compile=False, conf=None, copy_paste=0.0, copy_paste_mode=flip, cos_lr=False, cutmix=0.0, data=C:\Users\32537\Desktop\开发\pcb-inspector\data\platform\runs\edc80b7c395f488497145ec916565131\dataset\data.yaml, degrees=0.0, deterministic=True, device=cpu, dfl=1.5, dgrad=0.5, dis=6.0, distill_model=None, dlam=1.0, dlog=1.0, dnn=False, dropout=0.0, dynamic=False, embed=None, epochs=20, erasing=0.4, exist_ok=True, fliplr=0.5, flipud=0.0, format=torchscript, fraction=1.0, freeze=None, hsv_h=0.015, hsv_s=0.7, hsv_v=0.4, imgsz=640, iou=None, kobj=1.0, line_width=None, lr0=0.01, lrf=0.01, mask_ratio=4, max_det=300, mixup=0.0, mode=train, model=C:\Users\32537\Desktop\开发\pcb-inspector\data\platform\runs\edc80b7c395f488497145ec916565131\initial.pt, momentum=0.937, mosaic=1.0, multi_scale=0.0, name=fit, nbs=64, nms=None, opset=None, optimize=False, optimizer=auto, overlap_mask=True, patience=100, perspective=0.0, plots=False, pose=12.0, pretrained=True, profile=False, project=C:\Users\32537\Desktop\开发\pcb-inspector\data\platform\runs\edc80b7c395f488497145ec916565131, quantize=None, rect=False, resume=False, retina_masks=False, rle=1.0, save=True, save_conf=False, save_crop=False, save_dir=C:\Users\32537\Desktop\开发\pcb-inspector\data\platform\runs\edc80b7c395f488497145ec916565131\fit, save_frames=False, save_json=False, save_period=-1, save_txt=False, scale=0.5, seed=0, shear=0.0, show=False, show_boxes=True, show_conf=True, show_labels=True, simplify=True, single_cls=False, source=None, split=val, stream_buffer=False, task=detect, tile=False, time=None, tracker=tracktrack.yaml, translate=0.1, val=True, verbose=True, vid_stride=1, visualize=False, warmup_bias_lr=0.1, warmup_epochs=3.0, warmup_momentum=0.8, weight_decay=0.0005, workers=0, workspace=None
+
+                   from  n    params  module                                       arguments                     
+  0                  -1  1       464  ultralytics.nn.modules.conv.Conv             [3, 16, 3, 2]                 
+  1                  -1  1      4672  ultralytics.nn.modules.conv.Conv             [16, 32, 3, 2]                
+  2                  -1  1      6640  ultralytics.nn.modules.block.C3k2            [32, 64, 1, False, 0.25]      
+  3                  -1  1     36992  ultralytics.nn.modules.conv.Conv             [64, 64, 3, 2]                
+  4                  -1  1     26080  ultralytics.nn.modules.block.C3k2            [64, 128, 1, False, 0.25]     
+  5                  -1  1    147712  ultralytics.nn.modules.conv.Conv             [128, 128, 3, 2]              
+  6                  -1  1     87040  ultralytics.nn.modules.block.C3k2            [128, 128, 1, True]           
+  7                  -1  1    295424  ultralytics.nn.modules.conv.Conv             [128, 256, 3, 2]              
+  8                  -1  1    346112  ultralytics.nn.modules.block.C3k2            [256, 256, 1, True]           
+  9                  -1  1    164608  ultralytics.nn.modules.block.SPPF            [256, 256, 5]                 
+ 10                  -1  1    249728  ultralytics.nn.modules.block.C2PSA           [256, 256, 1]                 
+ 11                  -1  1         0  torch.nn.modules.upsampling.Upsample         [None, 2, 'nearest']          
+ 12             [-1, 6]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           
+ 13                  -1  1    111296  ultralytics.nn.modules.block.C3k2            [384, 128, 1, False]          
+ 14                  -1  1         0  torch.nn.modules.upsampling.Upsample         [None, 2, 'nearest']          
+ 15             [-1, 4]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           
+ 16                  -1  1     32096  ultralytics.nn.modules.block.C3k2            [256, 64, 1, False]           
+ 17                  -1  1     36992  ultralytics.nn.modules.conv.Conv             [64, 64, 3, 2]                
+ 18            [-1, 13]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           
+ 19                  -1  1     86720  ultralytics.nn.modules.block.C3k2            [192, 128, 1, False]          
+ 20                  -1  1    147712  ultralytics.nn.modules.conv.Conv             [128, 128, 3, 2]              
+ 21            [-1, 10]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           
+ 22                  -1  1    378880  ultralytics.nn.modules.block.C3k2            [384, 256, 1, True]           
+ 23        [16, 19, 22]  1    432037  ultralytics.nn.modules.head.Detect           [7, 16, None, [64, 128, 256]] 
+YOLO11n summary: 181 layers, 2,591,205 parameters, 2,591,189 gradients, 6.5 GFLOPs
+
+Transferred 499/499 items from pretrained weights
+Freezing layer 'model.23.dfl.conv.weight'
+[34m[1mtrain: [0mFast image access  (ping: 0.3±0.1 ms, read: 151.4±63.7 MB/s, size: 1559.4 KB)
+[K[34m[1mtrain: [0mScanning C:\Users\32537\Desktop\开发\pcb-inspector\data\platform\runs\edc80b7c395f488497145ec916565131\dataset\labels\train... 8 images, 7 backgrounds, 0 corrupt: 100% ━━━━━━━━━━━━ 8/8 511.8it/s 0.0s
+[34m[1mtrain: [0mNew cache created: C:\Users\32537\Desktop\开发\pcb-inspector\data\platform\runs\edc80b7c395f488497145ec916565131\dataset\labels\train.cache
+[34m[1malbumentations: [0mBlur(p=0.01, blur_limit=(3, 7)), MedianBlur(p=0.01, blur_limit=(3, 7)), ToGray(p=0.01, method='weighted_average', num_output_channels=3), CLAHE(p=0.01, clip_limit=(1.0, 4.0), tile_grid_size=(8, 8))
+[34m[1mval: [0mFast image access  (ping: 0.6±0.4 ms, read: 56.2±34.5 MB/s, size: 1183.1 KB)
+[K[34m[1mval: [0mScanning C:\Users\32537\Desktop\开发\pcb-inspector\data\platform\runs\edc80b7c395f488497145ec916565131\dataset\labels\val... 2 images, 2 backgrounds, 0 corrupt: 100% ━━━━━━━━━━━━ 2/2 163.0it/s 0.0s
+[34m[1mval: [0mNew cache created: C:\Users\32537\Desktop\开发\pcb-inspector\data\platform\runs\edc80b7c395f488497145ec916565131\dataset\labels\val.cache
+WARNING Labels are missing or empty in C:\Users\32537\Desktop\开发\pcb-inspector\data\platform\runs\edc80b7c395f488497145ec916565131\dataset\labels\val.cache, training may not work correctly. See https://docs.ultralytics.com/datasets for dataset formatting guidance.
+[34m[1moptimizer:[0m 'optimizer=auto' found, ignoring 'lr0=0.01' and determining best 'optimizer' and 'lr0' automatically... 
+[34m[1moptimizer:[0m AdamW(lr=0.000909, momentum=0.9) with parameter groups 81 weight(decay=0.0), 88 weight(decay=0.0005), 87 bias(decay=0.0)
+Using 8 train, 2 val images for fraction=1.0 at imgsz=640
+Using 0 dataloader workers
+Logging results to [1mC:\Users\32537\Desktop\开发\pcb-inspector\data\platform\runs\edc80b7c395f488497145ec916565131\fit[0m
+Starting training for 20 epochs...
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+[K       1/20         0G      2.754      7.351     0.8641         52        640: 0% ──────────── 0/1  3.1s[K       1/20         0G      2.754      7.351     0.8641         52        640: 100% ━━━━━━━━━━━━ 1/1 3.1s/it 3.1s
+[K                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 1/1 2.7it/s 0.4s
+                   all          2          0          0          0          0          0
+WARNING no labels found in detect set, cannot compute metrics without labels
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+[K       2/20         0G      1.198      8.645       0.73         13        640: 0% ──────────── 0/1  2.1s[K       2/20         0G      1.198      8.645       0.73         13        640: 100% ━━━━━━━━━━━━ 1/1 2.1s/it 2.1s
+[K                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 1/1 2.8it/s 0.4s
+                   all          2          0          0          0          0          0
+WARNING no labels found in detect set, cannot compute metrics without labels
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+[K       3/20         0G      1.861      4.024     0.8196         52        640: 0% ──────────── 0/1  2.1s[K       3/20         0G      1.861      4.024     0.8196         52        640: 100% ━━━━━━━━━━━━ 1/1 2.1s/it 2.1s
+[K                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 1/1 2.9it/s 0.3s
+                   all          2          0          0          0          0          0
+WARNING no labels found in detect set, cannot compute metrics without labels
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+[K       4/20         0G      1.504       13.3     0.8263         10        640: 0% ──────────── 0/1  2.2s[K       4/20         0G      1.504       13.3     0.8263         10        640: 100% ━━━━━━━━━━━━ 1/1 2.2s/it 2.2s
+[K                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 1/1 2.8it/s 0.4s
+                   all          2          0          0          0          0          0
+WARNING no labels found in detect set, cannot compute metrics without labels
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+[K       5/20         0G       2.13       7.77     0.7886         26        640: 0% ──────────── 0/1  2.3s[K       5/20         0G       2.13       7.77     0.7886         26        640: 100% ━━━━━━━━━━━━ 1/1 2.3s/it 2.3s
+[K                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 1/1 3.0it/s 0.3s
+                   all          2          0          0          0          0          0
+WARNING no labels found in detect set, cannot compute metrics without labels
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+[K       6/20         0G      1.791      3.703      0.871         58        640: 0% ──────────── 0/1  2.5s[K       6/20         0G      1.791      3.703      0.871         58        640: 100% ━━━━━━━━━━━━ 1/1 2.5s/it 2.5s
+[K                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 1/1 2.8it/s 0.4s
+                   all          2          0          0          0          0          0
+WARNING no labels found in detect set, cannot compute metrics without labels
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+[K       7/20         0G     0.6281      16.36     0.8926          2        640: 0% ──────────── 0/1  2.2s[K       7/20         0G     0.6281      16.36     0.8926          2        640: 100% ━━━━━━━━━━━━ 1/1 2.2s/it 2.2s
+[K                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 1/1 2.9it/s 0.4s
+                   all          2          0          0          0          0          0
+WARNING no labels found in detect set, cannot compute metrics without labels
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+[K       8/20         0G      1.819      4.319     0.8374         59        640: 0% ──────────── 0/1  2.1s[K       8/20         0G      1.819      4.319     0.8374         59        640: 100% ━━━━━━━━━━━━ 1/1 2.1s/it 2.1s
+[K                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 1/1 2.7it/s 0.4s
+                   all          2          0          0          0          0          0
+WARNING no labels found in detect set, cannot compute metrics without labels
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+[K       9/20         0G      1.781      6.064      0.765         38        640: 0% ──────────── 0/1  2.4s[K       9/20         0G      1.781      6.064      0.765         38        640: 100% ━━━━━━━━━━━━ 1/1 2.4s/it 2.4s
+[K                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 1/1 3.9it/s 0.3s
+                   all          2          0          0          0          0          0
+WARNING no labels found in detect set, cannot compute metrics without labels
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+[K      10/20         0G      2.579      7.162      1.017         53        640: 0% ──────────── 0/1  2.3s[K      10/20         0G      2.579      7.162      1.017         53        640: 100% ━━━━━━━━━━━━ 1/1 2.3s/it 2.3s
+[K                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 1/1 4.0it/s 0.3s
+                   all          2          0          0          0          0          0
+WARNING no labels found in detect set, cannot compute metrics without labels
+Closing dataloader mosaic
+[34m[1malbumentations: [0mBlur(p=0.01, blur_limit=(3, 7)), MedianBlur(p=0.01, blur_limit=(3, 7)), ToGray(p=0.01, method='weighted_average', num_output_channels=3), CLAHE(p=0.01, clip_limit=(1.0, 4.0), tile_grid_size=(8, 8))
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+[K      11/20         0G       3.07      12.83      0.922         26        640: 0% ──────────── 0/1  2.7s[K      11/20         0G       3.07      12.83      0.922         26        640: 100% ━━━━━━━━━━━━ 1/1 2.7s/it 2.7s
+[K                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 1/1 3.5it/s 0.3s
+                   all          2          0          0          0          0          0
+WARNING no labels found in detect set, cannot compute metrics without labels
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+[K      12/20         0G      3.198      14.29     0.8792         26        640: 0% ──────────── 0/1  2.4s[K      12/20         0G      3.198      14.29     0.8792         26        640: 100% ━━━━━━━━━━━━ 1/1 2.4s/it 2.4s
+[K                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 1/1 3.6it/s 0.3s
+                   all          2          0          0          0          0          0
+WARNING no labels found in detect set, cannot compute metrics without labels
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+[K      13/20         0G       3.03       9.97     0.8962         26        640: 0% ──────────── 0/1  2.6s[K      13/20         0G       3.03       9.97     0.8962         26        640: 100% ━━━━━━━━━━━━ 1/1 2.6s/it 2.6s
+[K                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 1/1 4.1it/s 0.2s
+                   all          2          0          0          0          0          0
+WARNING no labels found in detect set, cannot compute metrics without labels
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+[K      14/20         0G      2.639      12.78     0.8647         26        640: 0% ──────────── 0/1  2.2s[K      14/20         0G      2.639      12.78     0.8647         26        640: 100% ━━━━━━━━━━━━ 1/1 2.2s/it 2.2s
+[K                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 1/1 4.1it/s 0.2s
+                   all          2          0          0          0          0          0
+WARNING no labels found in detect set, cannot compute metrics without labels
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+[K      15/20         0G      3.456      25.07     0.9298         26        640: 0% ──────────── 0/1  2.3s[K      15/20         0G      3.456      25.07     0.9298         26        640: 100% ━━━━━━━━━━━━ 1/1 2.3s/it 2.3s
+[K                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 1/1 4.2it/s 0.2s
+                   all          2          0          0          0          0          0
+WARNING no labels found in detect set, cannot compute metrics without labels
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+[K      16/20         0G      2.676       8.66     0.8899         26        640: 0% ──────────── 0/1  2.1s[K      16/20         0G      2.676       8.66     0.8899         26        640: 100% ━━━━━━━━━━━━ 1/1 2.1s/it 2.1s
+[K                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 1/1 4.0it/s 0.3s
+                   all          2          0          0          0          0          0
+WARNING no labels found in detect set, cannot compute metrics without labels
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+[K      17/20         0G      3.295      24.59       0.87         26        640: 0% ──────────── 0/1  2.3s[K      17/20         0G      3.295      24.59       0.87         26        640: 100% ━━━━━━━━━━━━ 1/1 2.3s/it 2.3s
+[K                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 1/1 4.3it/s 0.2s
+                   all          2          0          0          0          0          0
+WARNING no labels found in detect set, cannot compute metrics without labels
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+[K      18/20         0G      3.032      8.858     0.9322         26        640: 0% ──────────── 0/1  2.1s[K      18/20         0G      3.032      8.858     0.9322         26        640: 100% ━━━━━━━━━━━━ 1/1 2.1s/it 2.1s
+[K                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 1/1 2.7it/s 0.4s
+                   all          2          0          0          0          0          0
+WARNING no labels found in detect set, cannot compute metrics without labels
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+[K      19/20         0G      2.412      6.622     0.9517         26        640: 0% ──────────── 0/1  2.0s[K      19/20         0G      2.412      6.622     0.9517         26        640: 100% ━━━━━━━━━━━━ 1/1 2.0s/it 2.0s
+[K                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 1/1 4.1it/s 0.2s
+                   all          2          0          0          0          0          0
+WARNING no labels found in detect set, cannot compute metrics without labels
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+[K      20/20         0G      2.959         18     0.7861         26        640: 0% ──────────── 0/1  2.1s[K      20/20         0G      2.959         18     0.7861         26        640: 100% ━━━━━━━━━━━━ 1/1 2.1s/it 2.1s
+[K                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 1/1 4.0it/s 0.3s
+                   all          2          0          0          0          0          0
+WARNING no labels found in detect set, cannot compute metrics without labels
+
+20 epochs completed in 0.017 hours.
+Optimizer stripped from C:\Users\32537\Desktop\开发\pcb-inspector\data\platform\runs\edc80b7c395f488497145ec916565131\fit\weights\last.pt, 5.5MB
+Optimizer stripped from C:\Users\32537\Desktop\开发\pcb-inspector\data\platform\runs\edc80b7c395f488497145ec916565131\fit\weights\best.pt, 5.5MB
+
+Validating C:\Users\32537\Desktop\开发\pcb-inspector\data\platform\runs\edc80b7c395f488497145ec916565131\fit\weights\best.pt...
+Ultralytics 8.4.208  Python-3.11.9 torch-2.15.0+cpu CPU (12th Gen Intel Core i5-12500H)
+YOLO11n summary (fused): 101 layers, 2,598,509 parameters, 0 gradients, 6.4 GFLOPs
+[K                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 1/1 4.0it/s 0.3s
+                   all          2          0          0          0          0          0
+WARNING no labels found in detect set, cannot compute metrics without labels
+Speed: 0.4ms preprocess, 58.5ms inference, 0.0ms loss, 25.5ms postprocess per image
+metrics {"names": ["missing_connection", "poor_solder_virtual", "poor_solder_cold", "solder_bridge", "pad_damage", "component_shift", "missing_component"], "per_class": {"missing_connection": {"precision": null, "recall": null, "ap50": null, "ap": null, "support": 0, "status": "未评估"}, "poor_solder_virtual": {"precision": null, "recall": null, "ap50": null, "ap": null, "support": 0, "status": "未评估"}, "poor_solder_cold": {"precision": null, "recall": null, "ap50": null, "ap": null, "support": 0, "status": "未评估"}, "solder_bridge": {"precision": null, "recall": null, "ap50": null, "ap": null, "support": 0, "status": "未评估"}, "pad_damage": {"precision": null, "recall": null, "ap50": null, "ap": null, "support": 0, "status": "未评估"}, "component_shift": {"precision": null, "recall": null, "ap50": null, "ap": null, "support": 0, "status": "未评估"}, "missing_component": {"precision": null, "recall": null, "ap50": null, "ap": null, "support": 0, "status": "未评估"}}, "val_images": 2, "instances": 0, "evaluation_status": "unavailable", "map50": null, "map": null, "reason": "缺少图片或缺陷标注，无法评估缺陷检出能力", "test": {"names": ["missing_connection", "poor_solder_virtual", "poor_solder_cold", "solder_bridge", "pad_damage", "component_shift", "missing_component"], "per_class": {"missing_connection": {"precision": null, "recall": null, "ap50": null, "ap": null, "support": 0, "status": "未评估"}, "poor_solder_virtual": {"precision": null, "recall": null, "ap50": null, "ap": null, "support": 0, "status": "未评估"}, "poor_solder_cold": {"precision": null, "recall": null, "ap50": null, "ap": null, "support": 0, "status": "未评估"}, "solder_bridge": {"precision": null, "recall": null, "ap50": null, "ap": null, "support": 0, "status": "未评估"}, "pad_damage": {"precision": null, "recall": null, "ap50": null, "ap": null, "support": 0, "status": "未评估"}, "component_shift": {"precision": null, "recall": null, "ap50": null, "ap": null, "support": 0, "status": "未评估"}, "missing_component": {"precision": null, "recall": null, "ap50": null, "ap": null, "support": 0, "status": "未评估"}}, "val_images": 2, "instances": 0, "evaluation_status": "unavailable", "map50": null, "map": null, "reason": "缺少图片或缺陷标注，无法评估缺陷检出能力"}, "baseline_version": "v14", "baseline_test": {"names": ["missing_connection", "poor_solder_virtual", "poor_solder_cold", "solder_bridge", "pad_damage", "component_shift", "missing_component"], "per_class": {"missing_connection": {"precision": null, "recall": null, "ap50": null, "ap": null, "support": 0, "status": "未评估"}, "poor_solder_virtual": {"precision": null, "recall": null, "ap50": null, "ap": null, "support": 0, "status": "未评估"}, "poor_solder_cold": {"precision": null, "recall": null, "ap50": null, "ap": null, "support": 0, "status": "未评估"}, "solder_bridge": {"precision": null, "recall": null, "ap50": null, "ap": null, "support": 0, "status": "未评估"}, "pad_damage": {"precision": null, "recall": null, "ap50": null, "ap": null, "support": 0, "status": "未评估"}, "component_shift": {"precision": null, "recall": null, "ap50": null, "ap": null, "support": 0, "status": "未评估"}, "missing_component": {"precision": null, "recall": null, "ap50": null, "ap": null, "support": 0, "status": "未评估"}}, "val_images": 2, "instances": 0, "evaluation_status": "unavailable", "map50": null, "map": null, "reason": "缺少图片或缺陷标注，无法评估缺陷检出能力"}}

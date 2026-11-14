@@ -1,0 +1,13 @@
+{
+  "input": "good_solder_150.jpg",
+  "model": "v17",
+  "classification": "good_solder",
+  "score": 0.9999,
+  "authoritative": true,
+  "template_applied": false,
+  "issues": [
+    "点位辅助检测：当前板型未匹配示例图，已使用整板识别；模板点位未应用",
+    "点位辅助检测：必检类别缺少验证样本：missing_connection、poor_solder_virtual、poor_solder_cold、solder_bridge、pad_damage、component_shift、missing_component",
+    "点位辅助检测：新模型缺少有效的检测验证或独立测试结果，请人工复核"
+  ]
+}
