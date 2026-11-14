@@ -55,6 +55,51 @@ class ModelHistoryTests(unittest.TestCase):
         with platform.db() as conn:
             platform.deploy_updated_detector(conn, self.pid, mid, 'S1',automatic=False)
 
+    def test_rename_active_model_persists_across_selection_runtime_and_restart(self):
+        mid, path = self.model('v1')
+        self.activate(mid)
+        self.client.post(f'/api/projects/{self.pid}/training-base', json={'model_id':mid})
+        runtime = PlatformRuntime(platform.DB, factory=Detector)
+        initial=runtime.status('S1',project_id=self.pid)
+        self.assertTrue(initial['ok'],initial)
+        self.assertEqual(initial['name'], 'v1')
+        response = self.client.patch(f'/api/models/{mid}/name',json={'name':'  一号线焊点模型  ','expected_name':'v1'})
+        self.assertEqual(response.status_code,200,response.json)
+        self.assertEqual(response.json['name'],'一号线焊点模型')
+        self.assertEqual(response.json['version'],'v1')
+        self.assertEqual(response.json['card']['template'],'det')
+        self.assertEqual(response.json['weights'],str(path))
+        self.assertEqual(self.client.get(self.selection).json['current_model']['name'],'一号线焊点模型')
+        self.assertEqual(self.client.get(f'/api/projects/{self.pid}/training-base').json['model']['name'],'一号线焊点模型')
+        self.assertEqual(runtime.status('S1',project_id=self.pid)['name'],'一号线焊点模型')
+        platform.initialize()
+        listing = self.client.get(f'/api/projects/{self.pid}/models').json
+        self.assertEqual(listing[0]['name'],'一号线焊点模型')
+        self.assertTrue(listing[0]['is_active'])
+        self.assertTrue(listing[0]['is_training_base'])
+        with platform.db() as conn:
+            self.assertEqual(platform.next_model_version(conn,self.pid),'v2')
+
+    def test_active_classifier_is_visible_and_cannot_be_deleted(self):
+        mid, _ = self.model('v-classifier',template='cls')
+        with platform.db() as conn:
+            conn.execute("INSERT OR REPLACE INTO platform_settings VALUES('active_classifier_model',?)",(mid,))
+        listing=self.client.get(f'/api/projects/{self.pid}/models').json
+        model=next(item for item in listing if item['id']==mid)
+        self.assertTrue(model['is_classifier_active'])
+        self.assertTrue(model['is_active'])
+        self.assertEqual(self.client.delete('/api/models/'+mid).status_code,409)
+
+    def test_rename_validation_and_conflicts_preserve_model(self):
+        mid, _ = self.model('v1')
+        endpoint = f'/api/models/{mid}/name'
+        for payload in ({},[],{'name':None},{'name':''},{'name':'   '},{'name':'a'*81},{'name':'bad\nname'}):
+            self.assertEqual(self.client.patch(endpoint,json=payload).status_code,400)
+        self.assertEqual(self.client.patch('/api/models/missing/name',json={'name':'new'}).status_code,404)
+        self.assertEqual(self.client.patch(endpoint,json={'name':'new'}).status_code,200)
+        self.assertEqual(self.client.patch(endpoint,json={'name':'overwrite','expected_name':'v1'}).status_code,409)
+        self.assertEqual(self.client.get(f'/api/models/{mid}').json['name'],'new')
+
     def test_history_is_unique_and_manual_choice_persists_across_training_and_restart(self):
         old, _ = self.model('v1')
         current, _ = self.model('v2')

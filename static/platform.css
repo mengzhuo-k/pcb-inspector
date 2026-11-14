@@ -305,3 +305,29 @@ body[data-role="employee"] label{font-size:12px}
 #annotationEditor [inert] :is(button,input){opacity:.5}
 
 #pointCanvas{display:block;max-width:100%;height:auto;cursor:crosshair;margin:10px auto}
+
+.reference-example{display:flex;align-items:center;gap:20px;background:#fff;border:1px solid #e1e7ef;border-radius:11px;padding:18px 20px;margin-bottom:22px}
+.reference-example-info{flex:1;min-width:0}.reference-example-info h2{font-size:16px;margin:0 0 6px}.reference-example-info p{font-size:12px;color:#718098;margin:4px 0;overflow-wrap:anywhere}
+.reference-example .example-thumbnail{display:flex;width:150px;height:100px;padding:5px;flex:none;background:#f0f5ff;border:1px solid #b9ccf3;border-radius:8px;overflow:hidden;color:#5272a8;font-size:12px}
+.example-thumbnail img{width:100%;height:100%;object-fit:contain}.example-actions{display:flex;flex-direction:column;gap:10px}.example-actions button{white-space:nowrap;font-size:12px}
+.reference-example-preview{position:relative;width:fit-content;max-width:100%;margin:12px auto;line-height:0}.help-body .reference-example-preview img{display:block;width:auto;max-width:100%;max-height:54vh;margin:0;border:0;border-radius:0;background:#f0f3f8}
+#referenceExampleSites{position:absolute;inset:0;pointer-events:none}#referenceExampleSites span{position:absolute;border:1px solid #2386c0;background:#38bdf819}
+#referenceExampleWarning{background:#fff6e7;color:#8e601f;padding:10px 12px;border-radius:7px;font-size:12px}
+@media(max-width:800px){.reference-example{flex-wrap:wrap;gap:14px;padding:14px}.reference-example .example-thumbnail{width:110px;height:85px}.example-actions{flex-direction:row;flex-wrap:wrap;width:100%}}
+
+#modelNameDialog{width:min(500px,92vw)}
+#modelNameError{color:#c64b52;font-size:12px}
+.training-page .model-history-description{min-width:0;overflow-wrap:anywhere}
+.training-page .model-history-row .archive-actions{max-width:380px;flex-wrap:wrap}
+
+.model-gallery-controls{padding:12px 14px;border-bottom:1px solid #e1e7ef}.model-gallery-controls label{display:block;margin-bottom:6px}.model-gallery-controls select{width:100%;font-size:12px}.model-gallery-controls p{font-size:11px;line-height:1.7;color:#718098;margin:8px 0 0;overflow-wrap:anywhere}.image-browser .filters{flex-wrap:wrap}
+
+#referenceExampleDialog{width:min(1100px,96vw)}
+.reference-template-tools{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px}.reference-template-tools label{display:grid;gap:4px;font-size:12px;min-width:100px}.reference-template-tools select{padding:6px 8px}.reference-template-tools button{font-size:12px;padding:7px 10px}.reference-template-tools input{width:100px;padding:0}
+.reference-example-scroll{max-height:55vh;overflow:auto;background:#eef2f7;border:1px solid #dde5ef;border-radius:7px;overscroll-behavior:contain}
+.reference-example-scroll .reference-example-preview{margin:0 auto;max-width:none;line-height:0}
+.help-body .reference-example-scroll img{display:block;max-width:none;max-height:none;border:0;margin:0}
+#referenceExampleSites{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+#referenceTemplateStatus{font-size:13px;font-weight:600;color:#3569e8;margin:12px 0 6px}#referenceTemplateHint{font-size:12px;line-height:1.7}
+
+#referenceExampleSites{pointer-events:auto}

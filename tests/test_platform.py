@@ -123,6 +123,38 @@ class PlatformTests(unittest.TestCase):
         self.assertEqual(response.json["review_status"], "approved")
         self.assertEqual(self.client.post(f"/api/projects/{self.project}/datasets", json={"template": "det"}).status_code, 200)
 
+    def test_custom_reference_upload_persists_and_drives_solder_template(self):
+        from unittest.mock import patch
+        endpoint = f"/api/projects/{self.project}/alignment-reference"
+        def upload_reference(name, color):
+            stream = io.BytesIO()
+            Image.new("RGB", (160, 120), color).save(stream, "PNG")
+            stream.seek(0)
+            return self.client.post(endpoint, data={"image":(stream, name)})
+        response = upload_reference("custom-board.png", "white")
+        self.assertEqual(response.status_code, 200)
+        ref = response.json
+        self.assertEqual(ref["filename"], "custom-board.png")
+        self.assertEqual(self.client.get(endpoint).json, ref)
+        with self.client.get(endpoint+"/file?id="+ref["id"]) as preview:
+            self.assertEqual(preview.status_code, 200)
+        self.assertEqual(self.client.get(f"/api/projects/{self.project}/images").json, [])
+        with patch("solder_sites.detect_sites", return_value=[dict(id="S1",x1=.1,y1=.2,x2=.3,y2=.4)]) as detect:
+            result = self.client.post(f"/api/projects/{self.project}/solder-template", json={
+                "action":"detect", "reference_id":ref["id"], "revision":0})
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.json["reference_id"], ref["id"])
+        self.assertEqual(len(result.json["sites"]), 1)
+        self.assertTrue(Path(detect.call_args.args[0]).is_file())
+        replaced = upload_reference("new-board.png", "gray")
+        self.assertEqual(replaced.status_code, 200)
+        self.assertNotEqual(replaced.json["id"], ref["id"])
+        self.assertIsNone(self.client.get(f"/api/projects/{self.project}/solder-template").json)
+        self.assertEqual(self.client.get(endpoint+"/file?id="+ref["id"]).status_code, 409)
+        invalid = self.client.post(endpoint, data={"image":(io.BytesIO(b"invalid"), "bad.png")})
+        self.assertEqual(invalid.status_code, 400)
+        self.assertEqual(self.client.get(endpoint).json, replaced.json)
+
     def test_reference_remains_available_for_manual_alignment(self):
         ref = self.upload("reference.jpg")
         other = self.upload("other.jpg")
@@ -188,6 +220,38 @@ class PlatformTests(unittest.TestCase):
         self.assertEqual(migrated["alignment"]["matrix"], matrix)
         platform_app.initialize()
         self.assertEqual(self.client.get(f"/api/images/{iid}").json, migrated)
+
+    def test_two_target_kinds_survive_template_save_and_reload(self):
+        reference=self.upload("two-type-reference.jpg")
+        self.client.post(f"/api/projects/{self.project}/alignment-reference",json={"image_id":reference})
+        endpoint=f"/api/projects/{self.project}/solder-template"
+        sites=[dict(id="H1",x1=.1,y1=.1,x2=.2,y2=.2,origin="auto",kind="through_hole"),
+               dict(id="J1",x1=.5,y1=.5,x2=.55,y2=.7,origin="auto",kind="smd_joint")]
+        response=self.client.post(endpoint,json={"action":"save","reference_id":reference,"revision":0,"sites":sites})
+        self.assertEqual(response.status_code,200,response.json)
+        self.assertEqual(response.json["sites"],sites)
+        self.assertEqual(self.client.get(endpoint).json["sites"],sites)
+
+    def test_site_preview_regenerates_without_overwriting_saved_manual_template(self):
+        from unittest.mock import patch
+        reference=self.upload("preview-reference.jpg")
+        self.client.post(f"/api/projects/{self.project}/alignment-reference",json={"image_id":reference})
+        endpoint=f"/api/projects/{self.project}/solder-template"
+        manual=dict(id="M1",x1=.1,y1=.1,x2=.2,y2=.2,origin="manual")
+        saved=self.client.post(endpoint,json={"action":"save","reference_id":reference,"revision":0,"sites":[manual]}).json
+        proposals=[dict(id="S1",x1=.1,y1=.1,x2=.2,y2=.2),dict(id="M1",x1=.6,y1=.6,x2=.7,y2=.7)]
+        with patch("solder_sites.detect_sites",return_value=proposals) as detector:
+            preview=self.client.post(endpoint,json={"action":"preview","reference_id":reference,"revision":saved["revision"],"sensitivity":"precise"})
+        self.assertEqual(preview.status_code,200,preview.json)
+        self.assertTrue(preview.json["preview"])
+        self.assertEqual(preview.json["revision"],saved["revision"])
+        self.assertEqual(len(preview.json["sites"]),2)
+        self.assertEqual(preview.json["sites"][0],manual)
+        self.assertNotEqual(preview.json["sites"][1]["id"],manual["id"])
+        detector.assert_called_once()
+        self.assertEqual(self.client.get(endpoint).json,saved)
+        conflict=self.client.post(endpoint,json={"action":"preview","reference_id":reference,"revision":0})
+        self.assertEqual(conflict.status_code,409)
 
     def test_applying_solder_template_preserves_selected_sites(self):
         from unittest.mock import patch

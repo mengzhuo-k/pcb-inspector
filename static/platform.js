@@ -13,6 +13,7 @@ const state = {
   sitePopup:null,
   models:[],modelSelection:null,modelsLoading:false,modelHistoryRequest:0,modelAction:false,
   trainingBase:null,modelUpdate:null,
+  galleryModelId:'',galleryInitialized:false,galleryInfo:null,
 }
 
 function toast(text, error=false){
@@ -46,7 +47,7 @@ async function loadProject(){
   if (state.project) state.project = await api('/api/projects/' + state.project.id)
 }
 
-const isProcessed = image => image && image.state !== 'new' && image.review_status === 'approved'
+const isProcessed = image => image && (image.readonly || (image.state !== 'new' && image.review_status === 'approved'))
 
 function updateEditorAccess(){
   const locked = !state.img || isProcessed(state.image)
@@ -55,10 +56,13 @@ function updateEditorAccess(){
   document.querySelector('.site-tools').inert = !state.img
   $('siteHint').hidden = !!locked
   for (const id of ['annotator','saveLabels']) $(id).disabled = !!locked
-  $('deleteTrainingImage').disabled = !state.img
+  $('deleteTrainingImage').disabled = !state.img || !!state.galleryModelId
+  $('deleteTrainingImage').hidden=!!state.galleryModelId
+  $('saveLabels').hidden=!!state.galleryModelId
   $('setReference').hidden = locked || !!state.reference
   $('manualAlign').hidden = !state.img || !state.reference || state.reference.id === state.image?.id || !!state.alignment
   $('readOnlyHint').hidden = !isProcessed(state.image)
+  $('readOnlyHint').textContent=state.galleryModelId ? '模型训练时的图片与标注'+(state.image?.annotation_type==='cls' ? ' · 整板类别：'+(state.image.class_label || state.image.primary_class || '未标明') : '')+' · 仅供查看' : '已处理 · 可悬停查看缺陷名称'
 }
 
 function resetEditor(){
@@ -81,7 +85,7 @@ function resetEditor(){
 }
 
 async function deleteTrainingImage(id) {
-  if (state.savingAnnotation) return
+  if (state.savingAnnotation || state.galleryModelId) return
   try {
     const result = await api('/api/images/' + id, undefined, 'DELETE')
     if (state.image?.id === id) resetEditor()
@@ -107,7 +111,12 @@ async function loadLabelImages(openCurrent=true){
   else if (state.filter==='approved') query.set('processing','processed')
   const images=[]
   try{
-    while (images.length<state.imageLimit){
+    if(state.galleryModelId){
+      const gallery=await api('/api/models/'+state.galleryModelId+'/images')
+      if(requestId!==state.listRequest) return
+      state.galleryInfo=gallery
+      images.push(...gallery.items.filter(item=>state.filter==='all' || item.split===state.filter))
+    }else while (images.length<state.imageLimit){
       query.set('offset',String(images.length))
       const page=await api('/api/projects/'+state.project.id+'/images?'+query)
       images.push(...page)
@@ -116,7 +125,8 @@ async function loadLabelImages(openCurrent=true){
     if (requestId!==state.listRequest) return
     state.images=images
   }finally{if(requestId===state.listRequest) state.listLoading=false}
-  $('loadMoreImages').hidden=images.length<state.imageLimit
+  $('loadMoreImages').hidden=!!state.galleryModelId || images.length<state.imageLimit
+  renderGalleryScope()
   document.querySelectorAll('[data-img-filter]').forEach(button=>button.classList.toggle('active',button.dataset.imgFilter===state.filter))
   const list = $('labelList')
   list.replaceChildren()
@@ -125,9 +135,10 @@ async function loadLabelImages(openCurrent=true){
     const row = document.createElement('div')
     row.className = 'row '+(processed ? 'image-processed' : 'image-unprocessed')+(state.image?.id === image.id ? ' active' : '')
     row.dataset.id = image.id
-    row.innerHTML = '<img loading="lazy" src="' + base + '/api/images/' + image.id + '/file?v=' + image.revision + '&w=160" alt="">'
-      + '<div><strong>' + esc(image.filename) + '</strong><small>' + (processed ? '已处理' : '未处理') + ' · '
-      + (image.label_count || 0) + ' 框</small></div>'
+    const thumbnailUrl=base+(image.file_url ? image.file_url+'?w=160' : '/api/images/'+image.id+'/file?v='+image.revision+'&w=160')
+    row.innerHTML = '<img loading="lazy" src="' + esc(thumbnailUrl) + '" alt="">'
+      + '<div><strong>' + esc(image.filename) + '</strong><small>' + (image.snapshot ? ({train:'训练集',val:'验证集',test:'测试集'}[image.split] || '模型图片') : processed ? '已处理' : '未处理') + ' · '
+      + (image.annotation_type==='cls' ? '整板标签：'+esc(image.class_label || image.primary_class) : (image.label_count || 0)+' 框')+'</small></div>'
     row.tabIndex=0
     row.setAttribute('role','button')
     row.setAttribute('aria-label',image.filename+' · '+(processed ? '已处理' : '未处理'))
@@ -135,7 +146,7 @@ async function loadLabelImages(openCurrent=true){
     row.onclick = () => openImage(image.id).catch(error => toast(error.message,true))
     list.append(row)
   }
-  if (!state.images.length) list.innerHTML='<p class="empty">暂无图片<br>点击“导入图片”添加训练样本</p>'
+  if (!state.images.length) list.innerHTML='<p class="empty">'+(state.galleryModelId ? esc(state.galleryInfo?.message || '该划分暂无图片') : '暂无图片<br>点击“导入图片”添加训练样本')+'</p>'
   $('labelStats').textContent = state.images.length + ' 张图片'
   if (!openCurrent) return updateLabelProgress()
   if (state.image && state.images.some(image => image.id === state.image.id)) await openImage(state.image.id)
@@ -145,7 +156,7 @@ async function loadLabelImages(openCurrent=true){
 }
 
 async function refreshImageLibrary(){
-  if (document.hidden || !state.project || state.listLoading || state.annotationDirty || state.siteDirty || state.savingAnnotation || state.importingImages) return
+  if (document.hidden || state.galleryModelId || !state.project || state.listLoading || state.annotationDirty || state.siteDirty || state.savingAnnotation || state.importingImages) return
   await loadLabelImages(false)
   if (!state.image && state.images.length) await openImage(state.images[0].id)
 }
@@ -153,6 +164,37 @@ async function refreshImageLibrary(){
 $('loadMoreImages').onclick=async()=>{
   state.imageLimit+=200
   try{await loadLabelImages(false)}catch(error){toast(error.message,true)}
+}
+
+function renderGalleryScope(){
+  const select=$('galleryModelSelect')
+  const key=JSON.stringify(state.models.map(model=>[model.id,model.name,model.version]))
+  if(select.dataset.optionsKey!==key){
+    select.replaceChildren(new Option('待训练图库（可编辑）',''))
+    for(const model of state.models) select.append(new Option(modelLabel(model),model.id))
+    select.dataset.optionsKey=key
+  }
+  select.value=state.galleryModelId;select.disabled=state.modelAction || !state.project
+  for(const button of document.querySelectorAll('[data-img-filter]')){
+    const filter=button.dataset.imgFilter
+    button.hidden=filter==='all' ? false : state.galleryModelId ? ['new','approved'].includes(filter) : ['train','val','test'].includes(filter)
+  }
+  const gallery=state.galleryInfo
+  $('galleryModelHint').textContent=state.galleryModelId
+    ? gallery ? '共 '+gallery.total+' 张 · 训练 '+gallery.splits.train+' / 验证 '+gallery.splits.val+' / 测试 '+gallery.splits.test+' · 训练时保存的图片与标注' : '正在读取模型图片…'
+    : '导入与标注新图片，用于后续模型训练。'
+}
+async function selectGalleryModel(id){
+  if(state.modelAction || !leaveAnnotation()) return false
+  ++state.listRequest
+  state.galleryModelId=id;state.galleryInitialized=true;state.galleryInfo=null
+  state.filter='all';state.imageLimit=200
+  resetEditor();renderGalleryScope()
+  try{await loadLabelImages();return true}catch(error){toast(error.message,true);return false}
+}
+$('galleryModelSelect').onchange=async event=>{
+  const selected=event.target.value
+  if(!await selectGalleryModel(selected)) renderGalleryScope()
 }
 
 function updateLabelProgress(){
@@ -183,7 +225,8 @@ async function openImage(id){
   state.alignment = null
   $('labelCanvas').getContext('2d').clearRect(0,0,$('labelCanvas').width,$('labelCanvas').height)
   $('overviewCanvas').getContext('2d').clearRect(0,0,$('overviewCanvas').width,$('overviewCanvas').height)
-  let detail = await api('/api/images/' + id)
+  const modelId=state.galleryModelId
+  let detail = await api(modelId ? '/api/models/'+modelId+'/images/'+id : '/api/images/' + id)
   if (requestId !== state.imageRequest || detail.project_id !== state.project?.id) return
   state.image = detail
   state.boxes = []
@@ -199,7 +242,7 @@ async function openImage(id){
   state.hoverBox = -1
   hideHoverInfo()
   $('annotator').value = state.image.labels[0]?.annotator || localStorage.getItem('pcbPlatformAnnotator') || ''
-  const [reference, template] = await Promise.all([
+  const [reference, template] = modelId ? [null,null] : await Promise.all([
     api('/api/projects/' + detail.project_id + '/alignment-reference'),
     api('/api/projects/' + detail.project_id + '/solder-template'),
   ])
@@ -224,7 +267,7 @@ async function openImage(id){
     detail = await api('/api/images/' + id)
     if (requestId !== state.imageRequest) return
   }
-  const url = base + '/api/images/' + id + '/file?v=' + detail.revision
+  const url = base + (detail.file_url || '/api/images/' + id + '/file?v=' + detail.revision)
   const displayUrl = detail.alignment ? url : preview?.preview || url
   const image = await loadAnnotationImage(displayUrl)
   if (requestId !== state.imageRequest) return
@@ -233,7 +276,7 @@ async function openImage(id){
   state.alignment = detail.alignment || (preview?.preview ? {reference_id:preview.reference_id,matrix:preview.matrix} : null)
   state.img = image
   const thumbnail = document.querySelector('#labelList .row[data-id="'+id+'"] img')
-  if (thumbnail) thumbnail.src = displayUrl === url ? url + '&w=160' : displayUrl
+  if (thumbnail) thumbnail.src = displayUrl === url ? url + (url.includes('?') ? '&' : '?')+'w=160' : displayUrl
   $('editorEmpty').hidden=true
   document.querySelector('.annotation-workspace').hidden=false
   state.reference = reference
@@ -256,8 +299,233 @@ $('setReference').onclick = async () => {
   try{
     await api('/api/projects/'+state.project.id+'/alignment-reference',{image_id:id,only_if_empty:true})
     if (state.image?.id === id) await openImage(id)
+    await loadReferenceExample()
   }catch(error){toast(error.message,true)}
 }
+
+// The reference image is saved separately from training images.
+let referenceExample=null,referenceExampleTemplate=null,referenceExampleDraft=null,referenceExampleBusy=false
+let referenceTemplateDraft=null,referenceTemplateDrag=null
+function referenceExampleUrl(){
+  return base+'/api/projects/'+state.project.id+'/alignment-reference/file?id='+encodeURIComponent(referenceExample.id)
+}
+function renderReferenceExample(){
+  $('uploadReferenceExample').disabled=!state.project || referenceExampleBusy
+  $('previewReferenceExample').disabled=!referenceExample || referenceExampleBusy
+  $('detectReferenceExample').disabled=!referenceExample || referenceExampleBusy
+  $('detectReferenceExample').textContent=referenceExampleTemplate ? '编辑焊点 / 焊脚模板' : '建立焊点 / 焊脚模板'
+  $('referenceExampleImage').hidden=!referenceExample
+  $('referenceExampleEmpty').hidden=!!referenceExample
+  if (referenceExample) $('referenceExampleImage').src=referenceExampleUrl()
+  $('referenceExampleStatus').textContent=referenceExample
+    ? '当前示例图：'+referenceExample.filename+' · '+(referenceExampleTemplate ? '已建立 '+referenceExampleTemplate.sites.length+' 个点位' : '尚未建立点位模板')
+    : '尚未设置，可上传自定义示例图。'
+}
+async function loadReferenceExample(){
+  const pid=state.project.id
+  const [reference,template]=await Promise.all([
+    api('/api/projects/'+pid+'/alignment-reference'),api('/api/projects/'+pid+'/solder-template'),
+  ])
+  if (state.project?.id!==pid) return
+  referenceExample=reference;referenceExampleTemplate=template
+  renderReferenceExample()
+}
+function showReferenceExampleDraft(){
+  const draft=referenceExampleDraft
+  referenceTemplateDraft=draft ? null : {referenceId:referenceExample.id,revision:referenceExampleTemplate?.revision || 0,
+    sites:structuredClone(referenceExampleTemplate?.sites || []),dirty:false,undo:[]}
+  referenceTemplateDrag=null
+  $('referenceExampleTitle').textContent=draft ? '使用自定义示例图' : '编辑焊点 / 焊脚模板'
+  $('referenceTemplateTools').hidden=!!draft
+  $('referenceTemplateHint').hidden=!!draft
+  $('referenceTemplateStatus').hidden=!!draft
+  $('saveReferenceTemplate').hidden=!!draft
+  $('referenceExampleSites').hidden=!!draft
+  $('referenceSiteZoom').value='1';$('referenceSiteMode').value='view'
+  $('regenerateReferenceSites').textContent=referenceExampleTemplate ? '重新自动定位' : '自动定位候选'
+  $('referenceExamplePreview').onload=resizeReferencePreview
+  $('referenceExamplePreview').src=draft ? draft.url : referenceExampleUrl()
+  $('referenceExampleDescription').textContent=draft ? draft.file.name+' · 确认后用于板位矫正和建立焊点 / 焊脚模板。' : referenceExample.filename+' · 蓝色为自动候选，绿色为手动点位。'
+  $('referenceExampleWarning').hidden=!draft || !referenceExample
+  $('useReferenceExample').hidden=!draft
+  $('referenceExampleDialog').showModal()
+  requestAnimationFrame(resizeReferencePreview)
+}
+function resizeReferencePreview(){
+  const image=$('referenceExamplePreview'),scroll=document.querySelector('.reference-example-scroll')
+  if(!image.naturalWidth || !$('referenceExampleDialog').open) return
+  const fit=Math.min(1,(scroll.clientWidth-4)/image.naturalWidth,window.innerHeight*.48/image.naturalHeight)
+  const zoom=Number($('referenceSiteZoom').value || 1)
+  image.style.width=Math.max(1,image.naturalWidth*fit*zoom)+'px'
+  drawReferenceTemplate()
+}
+function drawReferenceTemplate(){
+  const canvas=$('referenceExampleSites'),image=$('referenceExamplePreview')
+  const rect=image.getBoundingClientRect(),ratio=window.devicePixelRatio || 1
+  canvas.width=Math.max(1,Math.round(rect.width*ratio));canvas.height=Math.max(1,Math.round(rect.height*ratio))
+  const ctx=canvas.getContext('2d');ctx.scale(ratio,ratio)
+  if(!referenceTemplateDraft) return
+  const sites=referenceTemplateDrag?.preview || referenceTemplateDraft.sites
+  for(const site of sites){
+    ctx.strokeStyle=site.origin==='manual' ? '#168653' : '#1681c3';ctx.lineWidth=2
+    if(site.kind==='through_hole'){
+      ctx.beginPath();ctx.ellipse((site.x1+site.x2)*rect.width/2,(site.y1+site.y2)*rect.height/2,(site.x2-site.x1)*rect.width/2,(site.y2-site.y1)*rect.height/2,0,0,Math.PI*2);ctx.stroke()
+    }else ctx.strokeRect(site.x1*rect.width,site.y1*rect.height,(site.x2-site.x1)*rect.width,(site.y2-site.y1)*rect.height)
+  }
+  if(referenceTemplateDrag?.box){
+    const [x1,y1,x2,y2]=referenceTemplateDrag.box
+    ctx.strokeStyle='#e18c15';ctx.strokeRect(x1*rect.width,y1*rect.height,(x2-x1)*rect.width,(y2-y1)*rect.height)
+  }
+  const holes=referenceTemplateDraft.sites.filter(site=>site.kind==='through_hole').length,joints=referenceTemplateDraft.sites.filter(site=>site.kind==='smd_joint').length
+  $('referenceTemplateStatus').textContent=referenceTemplateDraft.sites.length+' 个点位 · '+(referenceTemplateDraft.dirty ? '修改尚未保存' : referenceExampleTemplate ? '当前已保存模板' : '尚未建立模板')+(holes || joints ? ' · 圆孔 '+holes+' / 矩形焊点 '+joints : '')
+  $('saveReferenceTemplate').disabled=referenceExampleBusy || !referenceTemplateDraft.dirty || !referenceTemplateDraft.sites.length
+  $('undoReferenceSite').disabled=referenceExampleBusy || !referenceTemplateDraft.undo.length
+  canvas.style.cursor=({view:'default',add:'crosshair',move:'move',delete:'pointer'})[$('referenceSiteMode').value]
+}
+function referenceSitePoint(event){
+  const rect=$('referenceExampleSites').getBoundingClientRect()
+  return [Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width)),Math.max(0,Math.min(1,(event.clientY-rect.top)/rect.height))]
+}
+function referenceSiteAt(point){
+  return referenceTemplateDraft.sites.filter(site=>point[0]>=site.x1 && point[0]<=site.x2 && point[1]>=site.y1 && point[1]<=site.y2)
+    .sort((a,b)=>(a.x2-a.x1)*(a.y2-a.y1)-(b.x2-b.x1)*(b.y2-b.y1))[0]
+}
+function rememberReferenceSites(){
+  referenceTemplateDraft.undo.push(structuredClone(referenceTemplateDraft.sites))
+  if(referenceTemplateDraft.undo.length>40) referenceTemplateDraft.undo.shift()
+}
+function updateReferenceSites(sites){
+  rememberReferenceSites();referenceTemplateDraft.sites=sites;referenceTemplateDraft.dirty=true;drawReferenceTemplate()
+}
+$('referenceSiteZoom').oninput=resizeReferencePreview
+$('referenceSiteMode').onchange=()=>{referenceTemplateDrag=null;drawReferenceTemplate()}
+$('undoReferenceSite').onclick=()=>{
+  if(referenceExampleBusy || !referenceTemplateDraft?.undo.length) return
+  referenceTemplateDraft.sites=referenceTemplateDraft.undo.pop();referenceTemplateDraft.dirty=true;drawReferenceTemplate()
+}
+$('clearReferenceSites').onclick=()=>{if(!referenceExampleBusy && referenceTemplateDraft) updateReferenceSites([])}
+$('referenceExampleSites').onpointerdown=event=>{
+  if(event.button!==0 || referenceExampleBusy || !referenceTemplateDraft) return
+  const mode=$('referenceSiteMode').value,point=referenceSitePoint(event)
+  const site=referenceSiteAt(point)
+  if(mode==='delete' && site) return updateReferenceSites(referenceTemplateDraft.sites.filter(item=>item.id!==site.id))
+  if(mode!=='add' && !(mode==='move' && site)) return
+  referenceTemplateDrag={pointerId:event.pointerId,start:point,mode,site:site ? {...site} : null}
+  $('referenceExampleSites').setPointerCapture(event.pointerId)
+}
+$('referenceExampleSites').onpointermove=event=>{
+  const drag=referenceTemplateDrag
+  if(!drag || drag.pointerId!==event.pointerId) return
+  const point=referenceSitePoint(event)
+  if(drag.mode==='add') drag.box=[Math.min(drag.start[0],point[0]),Math.min(drag.start[1],point[1]),Math.max(drag.start[0],point[0]),Math.max(drag.start[1],point[1])]
+  else{
+    const original=drag.site,width=original.x2-original.x1,height=original.y2-original.y1
+    const left=Math.max(0,Math.min(1-width,original.x1+point[0]-drag.start[0])),top=Math.max(0,Math.min(1-height,original.y1+point[1]-drag.start[1]))
+    drag.preview=referenceTemplateDraft.sites.map(item=>item.id===original.id ? {...item,x1:left,y1:top,x2:left+width,y2:top+height,origin:'manual'} : item)
+  }
+  drawReferenceTemplate()
+}
+$('referenceExampleSites').onpointerup=event=>{
+  const drag=referenceTemplateDrag
+  if(!drag || drag.pointerId!==event.pointerId) return
+  referenceTemplateDrag=null
+  if(drag.mode==='add' && drag.box && drag.box[2]-drag.box[0]>.002 && drag.box[3]-drag.box[1]>.002){
+    const [x1,y1,x2,y2]=drag.box
+    updateReferenceSites([...referenceTemplateDraft.sites,{id:'M'+crypto.randomUUID().slice(0,12),x1,y1,x2,y2,origin:'manual'}])
+  }else if(drag.preview) updateReferenceSites(drag.preview)
+  else drawReferenceTemplate()
+}
+$('referenceExampleSites').onpointercancel=()=>{referenceTemplateDrag=null;drawReferenceTemplate()}
+$('regenerateReferenceSites').onclick=async()=>{
+  if(referenceExampleBusy || !referenceTemplateDraft) return
+  if(referenceTemplateDraft.dirty && !confirm('重新定位会替换当前未保存的自动点位，可用“撤销”恢复。继续吗？')) return
+  referenceExampleBusy=true
+  $('referenceTemplateTools').inert=true;$('saveReferenceTemplate').disabled=true
+  $('referenceTemplateStatus').textContent='正在生成候选点位…'
+  try{
+    const result=await api('/api/projects/'+state.project.id+'/solder-template',{
+      action:'preview',reference_id:referenceTemplateDraft.referenceId,revision:referenceTemplateDraft.revision,
+      sensitivity:$('referenceSiteSensitivity').value,keep_manual:false,
+    })
+    const manual=referenceTemplateDraft.sites.filter(site=>site.origin==='manual')
+    const manualIds=new Set(manual.map(site=>site.id))
+    const candidates=result.sites.filter(site=>{
+      const area=(site.x2-site.x1)*(site.y2-site.y1)
+      return !manual.some(other=>Math.max(0,Math.min(site.x2,other.x2)-Math.max(site.x1,other.x1))*Math.max(0,Math.min(site.y2,other.y2)-Math.max(site.y1,other.y1))/area>.4)
+    }).map(site=>manualIds.has(site.id) ? {...site,id:'A'+crypto.randomUUID().slice(0,12)} : site)
+    updateReferenceSites([...manual,...candidates])
+    $('referenceSiteMode').value='delete'
+    toast(referenceTemplateDraft.sites.length ? '候选点位已生成，请核对、补删后保存模板' : '未检出可靠候选，可切换定位方式或拖框补点')
+  }catch(error){toast(error.message,true)}
+  finally{referenceExampleBusy=false;$('referenceTemplateTools').inert=false;drawReferenceTemplate()}
+}
+$('saveReferenceTemplate').onclick=async()=>{
+  if(referenceExampleBusy || !referenceTemplateDraft?.dirty || !referenceTemplateDraft.sites.length || !leaveAnnotation()) return
+  referenceExampleBusy=true;state.savingAnnotation=true
+  $('referenceTemplateTools').inert=true;$('annotationWorkspace').inert=true;drawReferenceTemplate()
+  try{
+    const template=await api('/api/projects/'+state.project.id+'/solder-template',{
+      action:'save',reference_id:referenceTemplateDraft.referenceId,revision:referenceTemplateDraft.revision,sites:referenceTemplateDraft.sites,
+    })
+    referenceExampleTemplate=template;referenceTemplateDraft.sites=structuredClone(template.sites)
+    referenceTemplateDraft.revision=template.revision;referenceTemplateDraft.dirty=false;referenceTemplateDraft.undo=[]
+    if(state.reference?.id===template.reference_id){state.siteTemplate=template;state.siteRenderKey=null;if(state.img) drawCanvas()}
+    renderReferenceExample();toast('模板已保存，后续同板型检测将使用修正后的点位')
+  }catch(error){toast(error.message,true)}
+  finally{referenceExampleBusy=false;state.savingAnnotation=false;$('referenceTemplateTools').inert=false;$('annotationWorkspace').inert=false;drawReferenceTemplate()}
+}
+$('uploadReferenceExample').onclick=()=>{
+  if (!referenceExampleBusy && !state.savingAnnotation && !state.importingImages) $('referenceExampleFile').click()
+}
+$('referenceExampleFile').onchange=async event=>{
+  const file=event.target.files[0];event.target.value=''
+  if (!file || referenceExampleBusy) return
+  if (file.size>16*1024*1024) return toast('示例图请控制在 16 MB 以内',true)
+  const url=URL.createObjectURL(file)
+  try{await loadAnnotationImage(url)}catch(error){URL.revokeObjectURL(url);return toast('无法读取示例图，请选择有效图片',true)}
+  referenceExampleDraft={file,url}
+  showReferenceExampleDraft()
+}
+async function openReferenceTemplate(){
+  if(referenceExampleBusy || !state.project) return
+  referenceExampleBusy=true;renderReferenceExample()
+  try{await loadReferenceExample();if(referenceExample) showReferenceExampleDraft()}
+  catch(error){toast(error.message,true)}
+  finally{referenceExampleBusy=false;renderReferenceExample();if(referenceTemplateDraft) drawReferenceTemplate()}
+}
+$('previewReferenceExample').onclick=openReferenceTemplate
+function closeReferenceEditor(){
+  if(referenceExampleBusy) return
+  if(referenceTemplateDraft?.dirty && !confirm('模板修改尚未保存，放弃本次修改吗？')) return
+  $('referenceExampleDialog').close()
+}
+$('closeReferenceExample').onclick=closeReferenceEditor
+$('referenceExampleDialog').oncancel=event=>{event.preventDefault();closeReferenceEditor()}
+$('referenceExampleDialog').onclose=()=>{
+  if(referenceExampleDraft) URL.revokeObjectURL(referenceExampleDraft.url)
+  referenceExampleDraft=null;referenceTemplateDraft=null;referenceTemplateDrag=null
+}
+$('useReferenceExample').onclick=async()=>{
+  if (!referenceExampleDraft || referenceExampleBusy || !leaveAnnotation()) return
+  referenceExampleBusy=true;state.savingAnnotation=true
+  $('useReferenceExample').disabled=true;$('closeReferenceExample').disabled=true
+  $('annotationWorkspace').inert=true;renderReferenceExample()
+  try{
+    const form=new FormData();form.append('image',referenceExampleDraft.file)
+    await api('/api/projects/'+state.project.id+'/alignment-reference',form)
+    resetEditor();state.alignment=null;state.reference=null;state.siteTemplate=null
+    await loadReferenceExample()
+    state.reference=referenceExample;state.siteTemplate=referenceExampleTemplate
+    $('referenceExampleDialog').close()
+    toast('示例图已保存，可建立焊点 / 焊脚模板；后续图片将使用此图对齐')
+  }catch(error){toast(error.message,true)}
+  finally{
+    referenceExampleBusy=false;state.savingAnnotation=false;$('annotationWorkspace').inert=false
+    $('useReferenceExample').disabled=false;$('closeReferenceExample').disabled=false
+    renderReferenceExample()
+  }
+}
+$('detectReferenceExample').onclick=openReferenceTemplate
 
 let alignmentDraft = null
 function drawAlignmentPoints(){
@@ -708,7 +976,7 @@ function renderSites(){
   $('batchSiteDefect').textContent='选择缺陷类型'+(state.selectedSites.length ? '（'+state.selectedSites.length+'）' : '')
   $('clearSiteSelection').disabled=locked || !state.selectedSites.length
   $('detectSites').disabled=locked || !state.reference
-  $('detectSites').textContent=template ? '应用点位模板' : '自动定位焊点 / 焊脚'
+  $('detectSites').textContent=template ? '应用点位模板' : '建立点位模板'
   $('editSites').disabled=locked || !sitesReady()
   $('editSites').classList.toggle('active',state.editingSites)
   $('editSites').textContent=state.editingSites ? '结束补点 / 删点' : '补点 / 删点'
@@ -826,6 +1094,11 @@ $('detectSites').onclick=async()=>{
   const pid=state.project.id,reference=state.reference.id
   if (state.image.id!==reference && state.alignment?.reference_id!==reference)
     return toast('请先完成与当前标准图的板面对齐，再应用点位模板',true)
+  if(!state.siteTemplate){
+    await loadReferenceExample()
+    showReferenceExampleDraft()
+    return
+  }
   const endpoint='/api/projects/'+pid+'/solder-template'
   const applying=!!state.siteTemplate
   state.savingAnnotation=true;$('annotationWorkspace').inert=true
@@ -856,6 +1129,7 @@ $('detectSites').onclick=async()=>{
       $('siteSearch').value=''
     }
     state.siteTemplate=template
+    referenceExampleTemplate=template;renderReferenceExample()
     state.siteRenderKey=null
     $('showSites').checked=true
     drawCanvas()
@@ -877,7 +1151,7 @@ $('editSites').onclick=()=>{
 $('saveSites').onclick=async()=>{
   if (!state.siteDirty || state.savingAnnotation) return
   state.savingAnnotation=true;$('annotationWorkspace').inert=true
-  try{await persistSites();toast('点位模板已保存，同板型校正图片会自动使用')}
+  try{await persistSites();await loadReferenceExample();toast('点位模板已保存，同板型校正图片会自动使用')}
   catch(error){toast(error.message,true)}
   finally{state.savingAnnotation=false;$('annotationWorkspace').inert=false;drawCanvas()}
 }
@@ -1043,14 +1317,17 @@ document.addEventListener('keydown',event=>{
   }
 })
 window.addEventListener('beforeunload',event=>{
-  if (state.annotationDirty || state.siteDirty){event.preventDefault();event.returnValue=''}
+  if (state.annotationDirty || state.siteDirty || referenceTemplateDraft?.dirty){event.preventDefault();event.returnValue=''}
 })
+
+const modelLabel = model => model?.name && model.name!==model.version ? model.name+'（'+model.version+'）' : model?.version || ''
 
 function renderModelUpdate(data){
   state.modelUpdate=data
   const current=data.selection?.current_model
   $('latestModelLabel').title=''
-  $('latestModelLabel').textContent=current ? '默认模型 '+current.version : '尚未设置默认模型'
+  const classifier=state.models.find(model=>model.is_classifier_active)
+  $('latestModelLabel').textContent=classifier ? '整板识别 '+modelLabel(classifier)+(current ? ' · 点位检测 '+modelLabel(current) : '') : current ? '默认模型 '+modelLabel(current) : '尚未设置默认模型'
   renderModelTestNotice(data.testing)
   renderModelImprovement()
 }
@@ -1059,25 +1336,28 @@ function renderModelImprovement(){
   const baseModel=state.trainingBase?.model
   const update=state.modelUpdate
   const busy=['pending','preparing','queued','running'].includes(update?.state)
-  $('trainingBaseLabel').textContent=baseModel ? '当前改进基础：'+baseModel.version : '训练基础：初始模型'
-  $('trainingBaseHint').textContent=baseModel ? '补充图片并保存标注后，将使用当前训练图库基于 '+baseModel.version+' 继续训练；也可用现有标注开始改进。原模型会保留，已排队的任务不受基础切换影响。' : '点击历史版本旁的“基于此模型改进”，再补充图片和标注。'
+  $('trainingBaseLabel').textContent=baseModel ? '当前改进基础：'+modelLabel(baseModel) : '训练基础：初始模型'
+  $('trainingBaseHint').textContent=baseModel ? '补充图片并保存标注后，将使用当前训练图库基于 '+modelLabel(baseModel)+' 继续训练；也可用现有标注开始改进。原模型会保留，已排队的任务不受基础切换影响。' : '点击历史版本旁的“基于此模型改进”，再补充图片和标注。'
   const labels={pending:'等待开始训练',preparing:'正在准备训练数据',queued:'训练已排队',running:'正在训练',ready:'训练完成',failed:'训练失败',waiting:'等待补充标注'}
-  $('modelTrainingState').textContent=update ? (labels[update.state] || '')+(update.message ? ' · '+update.message : update.state==='ready' && update.latest_model ? ' · 已生成 '+update.latest_model.version : '') : ''
+  $('modelTrainingState').textContent=update ? (labels[update.state] || '')+(update.message ? ' · '+update.message : update.state==='ready' && update.latest_model ? ' · 已生成 '+modelLabel(update.latest_model) : '') : ''
   $('startModelImprovement').disabled=state.modelAction || !baseModel || !update?.auto_train_enabled || busy
   $('resetTrainingBase').disabled=state.modelAction || !baseModel
 }
 
 function renderModelHistory(){
+  renderGalleryScope()
   const current=state.modelSelection?.current_model
-  $('modelHistorySummary').textContent=(current ? '识别使用 '+current.version : '尚未启用模型')+' · '+state.models.length+' 个版本'
+  const classifier=state.models.find(model=>model.is_classifier_active)
+  $('defaultModelRole').textContent=classifier ? '点位检测模型' : '默认使用模型'
+  $('modelHistorySummary').textContent=(classifier ? '整板识别 '+modelLabel(classifier)+(current ? ' · 点位检测 '+modelLabel(current) : '') : current ? '识别使用 '+modelLabel(current) : '尚未启用模型')+' · '+state.models.length+' 个版本'
   const selector=$('defaultModelSelect')
   const candidates=state.models.filter(model=>model.template==='det')
-  const optionsKey=JSON.stringify(candidates.map(model=>[model.id,model.version,model.weights_available]))
+  const optionsKey=JSON.stringify(candidates.map(model=>[model.id,modelLabel(model),model.weights_available]))
   if(selector.dataset.optionsKey!==optionsKey){
     selector.replaceChildren(new Option('请选择历史模型',''))
     selector.options[0].disabled=true
     for(const model of candidates){
-      const option=new Option(model.version+(model.weights_available ? '' : '（文件不可用）'),model.id)
+      const option=new Option(modelLabel(model)+(model.weights_available ? '' : '（文件不可用）'),model.id)
       option.disabled=!model.weights_available
       selector.append(option)
     }
@@ -1085,7 +1365,7 @@ function renderModelHistory(){
   }
   if(!state.modelAction) selector.value=current?.id || ''
   selector.disabled=state.modelAction || !state.modelSelection || !candidates.some(model=>model.weights_available)
-  $('modelSelectionHint').textContent=state.modelAction ? '正在处理模型…' : current ? '已固定使用 '+current.version+'，新训练版本不会自动替换' : '请选择一个历史模型作为默认模型'
+  $('modelSelectionHint').textContent=state.modelAction ? '正在处理模型…' : current ? '已固定使用 '+modelLabel(current)+'，新训练版本不会自动替换' : '请选择一个历史模型作为默认模型'
   const list=$('modelHistoryList')
   list.replaceChildren()
   for(const model of state.models){
@@ -1096,12 +1376,12 @@ function renderModelHistory(){
     const metric=typeof metrics.map50==='number' ? 'mAP50 '+(metrics.map50*100).toFixed(1)+'%' : typeof metrics.top1==='number' ? 'Top-1 '+(metrics.top1*100).toFixed(1)+'%' : '尚无有效验证指标'
     const created=model.created && !Number.isNaN(Date.parse(model.created)) ? new Date(model.created).toLocaleString('zh-CN',{hour12:false}) : '未记录时间'
     const origin=model.card?.trained_from
-    row.innerHTML='<div class="model-history-description"><strong>'+esc(model.version)+'</strong>'+(model.is_active ? '<span class="model-current-badge">使用中</span>' : '')+(model.is_training_base ? '<span class="model-current-badge">改进基础</span>' : '')+'<small>'+esc(created)+' · '+(model.template==='det' ? '缺陷检测' : '整板分类')+(origin ? ' · 基于 '+esc(origin.version)+' 改进' : '')+'</small></div><span class="model-history-metric">'+esc(model.weights_available ? metric : '权重文件不可用')+'</span>'
+    row.innerHTML='<div class="model-history-description"><strong>'+esc(modelLabel(model))+'</strong>'+(model.is_active ? '<span class="model-current-badge">'+(model.is_classifier_active ? '分类使用中' : '使用中')+'</span>' : '')+(model.is_training_base ? '<span class="model-current-badge">改进基础</span>' : '')+'<small>'+esc(created)+' · '+(model.template==='det' ? '缺陷检测' : '整板分类')+(origin ? ' · 基于 '+esc(origin.version)+' 改进' : model.card?.training?.model==='yolo11n-cls.pt' ? ' · 初始模型训练' : '')+'</small></div><span class="model-history-metric">'+esc(model.weights_available ? metric : '权重文件不可用')+'</span>'
     const actions=document.createElement('div')
     actions.className='archive-actions'
     const use=document.createElement('button')
     const fixed=current?.id===model.id
-    use.textContent=fixed ? '默认使用中' : '设为默认'
+    use.textContent=model.template==='cls' ? model.is_classifier_active ? '整板识别使用中' : '整板分类模型' : fixed ? '默认使用中' : '设为默认'
     use.disabled=state.modelAction || fixed || !model.weights_available || model.template!=='det'
     use.className='quiet'
     use.onclick=()=>changeModelSelection({model_id:model.id})
@@ -1110,12 +1390,19 @@ function renderModelHistory(){
     improve.className='quiet'
     improve.disabled=state.modelAction || model.is_training_base || !model.weights_available || model.template!=='det'
     improve.onclick=()=>changeTrainingBase(model.id)
+    const pictures=document.createElement('button')
+    pictures.textContent='查看训练图片'
+    pictures.disabled=state.modelAction
+    pictures.onclick=async()=>{if(await selectGalleryModel(model.id)) document.querySelector('.image-browser').scrollIntoView({behavior:'smooth',block:'start'})}
+    const rename=document.createElement('button')
+    rename.textContent='修改名称';rename.disabled=state.modelAction
+    rename.onclick=()=>openModelNameDialog(model)
     const remove=document.createElement('button')
     remove.className='danger';remove.textContent='删除'
     remove.disabled=state.modelAction || model.is_active || model.is_training_base
     if(model.is_active || model.is_training_base) remove.title='请先切换识别模型或改进基础后再删除'
     remove.onclick=()=>deleteHistoryModel(model)
-    actions.append(use,improve,remove);row.append(actions);list.append(row)
+    actions.append(pictures,rename,use,improve,remove);row.append(actions);list.append(row)
   }
   if(!state.models.length) list.innerHTML='<p class="empty">尚无历史模型，训练完成后会自动记录在这里。</p>'
   renderModelImprovement()
@@ -1132,9 +1419,47 @@ async function loadModelHistory(force=false){
       api('/api/projects/'+state.project.id+'/training-base'),
     ])
     if(request!==state.modelHistoryRequest) return
+    const missingGallery=state.galleryModelId && !models.some(model=>model.id===state.galleryModelId)
     state.models=models;state.modelSelection=selection;state.trainingBase=trainingBase
+    if(!state.galleryInitialized){state.galleryModelId=models.find(model=>model.is_classifier_active)?.id || selection.current_model?.id || models[0]?.id || '';state.galleryInitialized=true}
+    if(missingGallery){state.galleryModelId='';state.galleryInfo=null;resetEditor()}
+    renderGalleryScope()
+    if(missingGallery) await loadLabelImages()
     renderModelHistory()
   }finally{if(request===state.modelHistoryRequest) state.modelsLoading=false}
+}
+
+let modelNameDraft=null
+function openModelNameDialog(model){
+  if(state.modelAction) return
+  modelNameDraft=model
+  $('modelNameInput').value=model.name || model.version
+  $('modelNameHint').textContent='模型版本：'+model.version
+  $('modelNameError').textContent=''
+  $('modelNameDialog').showModal()
+  $('modelNameInput').focus();$('modelNameInput').select()
+}
+$('cancelModelName').onclick=()=>{if(!state.modelAction) $('modelNameDialog').close()}
+$('modelNameDialog').oncancel=event=>{if(state.modelAction) event.preventDefault()}
+$('modelNameDialog').onclose=()=>{modelNameDraft=null}
+$('modelNameForm').onsubmit=async event=>{
+  event.preventDefault()
+  if(state.modelAction || !modelNameDraft) return
+  const model=modelNameDraft,name=$('modelNameInput').value.trim()
+  if(!name) return $('modelNameError').textContent='请输入模型名称'
+  ++state.modelHistoryRequest;state.modelsLoading=false;state.modelAction=true
+  $('saveModelName').disabled=true;$('cancelModelName').disabled=true
+  $('modelNameError').textContent=''
+  try{
+    await api('/api/models/'+model.id+'/name',{name,expected_name:model.name || model.version},'PATCH')
+    $('modelNameDialog').close()
+    await loadModelHistory(true);await loadModelUpdate()
+    toast('模型名称已更新')
+  }catch(error){$('modelNameError').textContent=error.message;toast(error.message,true)}
+  finally{
+    state.modelAction=false;$('saveModelName').disabled=false;$('cancelModelName').disabled=false
+    renderModelHistory()
+  }
 }
 
 async function changeModelSelection(payload){
@@ -1144,20 +1469,20 @@ async function changeModelSelection(payload){
   try{
     state.modelSelection=await api('/api/projects/'+state.project.id+'/model-selection',payload)
     await loadModelHistory(true);await loadModelUpdate()
-    toast('已将 '+state.modelSelection.current_model.version+' 设为默认模型')
+    toast('已将 '+modelLabel(state.modelSelection.current_model)+' 设为默认模型')
   }catch(error){toast(error.message,true)}
   finally{state.modelAction=false;renderModelHistory()}
 }
 
 async function deleteHistoryModel(model){
   if(state.modelAction || model.is_active || model.is_training_base) return
-  if(!confirm('删除历史模型 '+model.version+'？训练图片和历史检验记录会保留。')) return
+  if(!confirm('删除历史模型 '+modelLabel(model)+'？训练图片和历史检验记录会保留。')) return
   ++state.modelHistoryRequest;state.modelsLoading=false
   state.modelAction=true;renderModelHistory()
   try{
     await api('/api/models/'+model.id,undefined,'DELETE')
     await loadModelHistory(true);await loadModelUpdate()
-    toast('模型 '+model.version+' 已删除')
+    toast('模型 '+modelLabel(model)+' 已删除')
   }catch(error){toast(error.message,true)}
   finally{state.modelAction=false;renderModelHistory()}
 }
@@ -1182,7 +1507,7 @@ $('startModelImprovement').onclick=async()=>{
   try{
     const update=await api('/api/projects/'+state.project.id+'/model-update',{})
     renderModelUpdate(update)
-    toast('已请求基于 '+state.trainingBase.model.version+' 改进，训练进度会自动更新')
+    toast('已请求基于 '+modelLabel(state.trainingBase.model)+' 改进，训练进度会自动更新')
   }catch(error){toast(error.message,true)}
   finally{state.modelAction=false;renderModelHistory()}
 }
@@ -1210,6 +1535,7 @@ $('trainingFiles').onchange=async event=>{
   const files=[...event.target.files]
   event.target.value=''
   if (!files.length || !state.project || !leaveAnnotation()) return
+  if(state.galleryModelId){state.galleryModelId='';state.galleryInfo=null;state.filter='all';resetEditor();renderGalleryScope()}
   state.importingImages=true
   const button=$('importTrainingImages')
   button.disabled=true
@@ -1262,9 +1588,10 @@ document.querySelectorAll('[data-img-filter]').forEach(button=>{
     setInterval(()=>loadModelUpdate().catch(()=>{
       $('latestModelLabel').title='模型信息暂时无法刷新'
     }),3000)
+    await loadModelHistory()
     await refreshWorkspace()
+    await loadReferenceExample()
     $('importTrainingImages').disabled=false
-    await loadModelHistory().catch(()=>{$('modelHistorySummary').textContent='暂时无法读取，展开后重试'})
     loadImportMode().catch(()=>{})
     setInterval(()=>loadImportMode().catch(()=>{}),5000)
     setInterval(()=>refreshImageLibrary().catch(error=>toast(error.message,true)),5000)

@@ -89,6 +89,7 @@ def choose_threshold(curve):
 
 
 def main():
+    global DATA
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--imgsz", type=int, default=224)
@@ -102,7 +103,13 @@ def main():
     parser.add_argument("--threads", type=int, default=0)
     parser.add_argument("--channels-last", action="store_true")
     parser.add_argument("--version", default="smd-defdb-v1")
+    parser.add_argument("--data", type=Path, default=DATA)
+    parser.add_argument("--output-card", type=Path)
+    parser.add_argument("--output-weights", type=Path)
+    parser.add_argument("--platform-database", type=Path)
+    parser.add_argument("--job-id")
     args = parser.parse_args()
+    DATA = args.data.resolve()
     if not (DATA / "train").is_dir():
         raise SystemExit("run training/prepare_smd_defdb.py first")
     if args.threads:
@@ -125,6 +132,10 @@ def main():
     best = Path(result.save_dir) / "weights/best.pt"
     if not best.is_file():
         raise SystemExit("training produced no best.pt")
+    if args.platform_database and args.job_id:
+        import sqlite3
+        with sqlite3.connect(args.platform_database, timeout=30) as conn:
+            conn.execute("UPDATE jobs SET testing_started=? WHERE id=?",(time.time(),args.job_id))
     trained = YOLO(str(best))
     metrics = trained.val(data=str(DATA), split="val", imgsz=args.imgsz,
                           batch=args.batch, device=args.device, verbose=False, plots=False)
@@ -175,16 +186,19 @@ def main():
                               threads=args.threads or None,
                               seconds=round(time.time() - started, 1)))
     MODELS.mkdir(exist_ok=True)
-    target = MODELS / card["weights"]
+    target = args.output_weights or MODELS / card["weights"]
+    target.parent.mkdir(parents=True,exist_ok=True)
     shutil.copy2(best, target)
-    (MODELS / "smd_defect_cls_v1.json").write_text(
+    output_card = args.output_card or MODELS / "smd_defect_cls_v1.json"
+    output_card.parent.mkdir(parents=True,exist_ok=True)
+    output_card.write_text(
         json.dumps(card, ensure_ascii=False, indent=2), encoding="utf-8")
     run_card = Path(result.save_dir) / "metrics.json"
     run_card.write_text(json.dumps(dict(card=card, curve=curve, predictions=rows),
                                    ensure_ascii=False, indent=1), encoding="utf-8")
     print(json.dumps(card["metrics"], ensure_ascii=False, indent=2))
     print("weights", target, target.stat().st_size)
-    print("card", MODELS / "smd_defect_cls_v1.json")
+    print("card", output_card)
 
 
 if __name__ == "__main__":

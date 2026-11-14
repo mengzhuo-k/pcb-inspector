@@ -268,16 +268,32 @@ def snapshot():
         abort(400, "图片无法解码，请使用 JPG、PNG 或 WebP")
 
 
+def use_primary_classification(detection):
+    classification=detection.classification
+    if classification and classification.get("authoritative"):
+        classification["point_model_version"]=detection.model_version
+        classification["point_model_sha256"]=detection.model_sha256
+        if getattr(detection,"inspection",None):
+            detection.inspection["detector_model_version"]=detection.model_version
+            detection.inspection["decision_basis"]="board_classifier"
+        detection.model_version=classification["model_version"]
+        detection.model_sha256=classification["model_sha256"]
+        detection.issues=["点位辅助检测："+issue for issue in detection.issues]
+    return detection
+
+
 def detect(img, station="", inspection_context=None):
     original = img
     alignment = None
     reference = None
+    issues = []
+    classifier_options = defect_classifier.status()
     try:
         reference = (inspection_context.get("reference") if inspection_context is not None
                      else platform_runtime.alignment_reference(station))
         if reference:
             if reference.get("sha256") and hashlib.sha256(Path(reference["path"]).read_bytes()).hexdigest() != reference["sha256"]:
-                raise ValueError("标准图文件已变化，请按当前模板重新检测该批次")
+                abort(400,"标准图文件已变化，请按当前模板重新检测该批次")
             from pcb_alignment import align
             result = align(img, reference["path"])
             with Image.open(io.BytesIO(base64.b64decode(result["preview"].split(",", 1)[1]))) as corrected:
@@ -285,10 +301,21 @@ def detect(img, station="", inspection_context=None):
             alignment = dict(reference_id=reference["id"], matrix=result["matrix"], method=result["method"],
                 project_id=reference.get("project_id"),matches=result.get("matches"),inliers=result.get("inliers"))
     except (ValueError, OSError, sqlite3.Error) as exc:
-        abort(400, "板面对齐失败，请使用清晰完整的板面图片：" + str(exc))
+        if not classifier_options.get("allow_unaligned"):
+            abort(400, "板面对齐失败，请使用清晰完整的板面图片：" + str(exc))
+        reference = None
+        alignment = None
+        img = original
+        issues.append("当前板型未匹配示例图，已使用整板识别；模板点位未应用")
     if reference and "sites" in reference:
-        return detect_template_sites(img, original, station, reference, alignment)
-    issues = []
+        detection = detect_template_sites(img, original, station, reference, alignment)
+        if classifier_options.get("use_with_sites"):
+            try:
+                detection.classification = defect_classifier.predict(img)
+            except Exception:
+                app.logger.exception("整板分类执行失败")
+                detection.issues.append("整板分类执行失败")
+        return use_primary_classification(detection)
     policy = platform_runtime.policy(station)
     classification = None
     try:
@@ -316,7 +343,7 @@ def detect(img, station="", inspection_context=None):
         detection.image = img
         detection.original_image = original
         detection.alignment = alignment
-        return detection
+        return use_primary_classification(detection)
     except LookupError as exc:
         issues.append(str(exc))
     except Exception:
@@ -340,7 +367,7 @@ def detect(img, station="", inspection_context=None):
     detection.image = img
     detection.original_image = original
     detection.alignment = alignment
-    return detection
+    return use_primary_classification(detection)
 
 
 def detect_template_sites(img, original, station, reference, alignment):
@@ -372,7 +399,7 @@ def detect_template_sites(img, original, station, reference, alignment):
     detection.inspection = dict(mode="solder_sites",project_id=reference.get("project_id"),
         reference_id=reference["id"],template_revision=reference["template_revision"],
         total_sites=len(sites),checked_sites=len(sites),regions=len(regions),sites=sites)
-    return detection
+    return use_primary_classification(detection)
 
 
 def field(name, limit, required=False):
@@ -500,7 +527,7 @@ def save_record(conn, img, boxes, station, batch, temp=None, note="", batch_id=N
     for finding in analysis:
         finding["basis"] = "模型检出与工艺规则"
         finding["history_samples"] = len(history)
-    defective = bool(boxes) or bool(classification and classification["is_defect"])
+    defective = bool(classification["is_defect"]) if classification and classification.get("authoritative") else bool(boxes) or bool(classification and classification["is_defect"])
     issues = getattr(boxes, "issues", [])
     decision = "不合格" if defective else "合格"
     conn.execute("""INSERT INTO records
@@ -569,7 +596,8 @@ def detail(rid):
     result["sampled"] = bool(sample and sample["sampled"])
     result["sample_revision"] = sample["sample_revision"] if sample else 0
     result["readonly"] = bool(batch and batch["state"] == "completed")
-    result["review_required"] = not result["readonly"] and (not row["batch_id"] or result["sampled"] or row["decision"] == "不合格" or row["auto_decision"] == "不合格")
+    result["review_required"] = False
+    result["review_available"] = not result["readonly"]
     return jsonify(result)
 
 
@@ -634,23 +662,6 @@ def photo(rid):
     return send_file(io.BytesIO(content),mimetype='image/jpeg',etag=tag,conditional=True)
 
 
-@app.delete("/api/records/<rid>")
-def delete_record(rid):
-    with db() as conn:
-        conn.execute("BEGIN IMMEDIATE")
-        record = conn.execute("SELECT batch_id FROM records WHERE id=?", (rid,)).fetchone()
-        if not record:
-            abort(404, "检验单已删除或不存在")
-        require_open_batch(conn, record["batch_id"])
-        cursor = conn.execute("DELETE FROM records WHERE id=?", (rid,))
-        if not cursor.rowcount:
-            abort(404, "检验单已删除或不存在")
-        conn.execute("DELETE FROM reviews WHERE record_id=?", (rid,))
-        conn.execute("UPDATE batch_items SET state='deleted',record_id=NULL,sampled=0 WHERE record_id=?", (rid,))
-
-    return jsonify(deleted=rid)
-
-
 @app.post("/api/records/<rid>/review")
 def review(rid):
     reviewer = field("reviewer", 80, True)
@@ -667,8 +678,6 @@ def review(rid):
         if not row:
             abort(404, "检验单已删除或不存在")
         require_open_batch(conn, row["batch_id"])
-        if not (not row["batch_id"] or row["sampled"] or row["decision"] == "不合格" or row["auto_decision"] == "不合格"):
-            abort(400, "该图片不属于抽样清单或当前不合格图片")
         try:
             revision = int(request.form.get("revision", 0))
         except ValueError:
@@ -826,23 +835,18 @@ def rejected_items():
     return jsonify(result)
 
 
-@app.route("/api/exceptions/<rid>",methods=["GET","DELETE"])
+@app.get("/api/exceptions/<rid>")
 def exception_case(rid):
     with db() as conn:
-        if request.method == "DELETE":
-            conn.execute("BEGIN IMMEDIATE")
         row = conn.execute("""SELECT e.* FROM exception_cases e JOIN batches b ON b.id=e.batch_id
             WHERE e.record_id=? AND b.state='completed' AND e.deleted=0
             AND json_extract(e.snapshot,'$.decision')='不合格'""", (rid,)).fetchone()
         if not row:
             abort(404, "已完成批次的不合格图片不存在")
-        if request.method == "DELETE":
-            conn.execute("UPDATE exception_cases SET deleted=1 WHERE record_id=?", (rid,))
-            return jsonify(deleted=rid)
         snapshot = json.loads(row["snapshot"])
         availability=conn.execute("SELECT original_image IS NOT NULL FROM records WHERE id=?",(rid,)).fetchone()
         snapshot["original_available"]=int(bool(availability and availability[0]))
-    snapshot.update(id=rid,exception_mode=True,readonly=True,review_required=False)
+    snapshot.update(id=rid,exception_mode=True,readonly=True,review_required=False,review_available=False)
     return jsonify(snapshot)
 
 
@@ -1080,14 +1084,12 @@ def finish_batch(bid):
 
 
 @app.delete("/api/batches/<bid>")
-def delete_archived_batch(bid):
+def delete_batch(bid):
     with db() as conn:
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute("SELECT state FROM batches WHERE id=?", (bid,)).fetchone()
         if not row:
             abort(404,"批次不存在或已删除")
-        if row["state"] != "completed":
-            abort(409,"请先完成批次归档，再从质量档案删除")
         conn.execute("""DELETE FROM reviews WHERE record_id IN
             (SELECT id FROM records WHERE batch_id=? UNION SELECT record_id FROM batch_items WHERE batch_id=?)""", (bid,bid))
         conn.execute("DELETE FROM exception_cases WHERE batch_id=?", (bid,))
@@ -1238,6 +1240,12 @@ def batch_worker():
                 context=json.loads(item["inspection_context"]) if item["inspection_context"] else None
                 boxes = detect(img, item["station"],inspection_context=context) if context is not None else detect(img,item["station"])
                 with db() as conn:
+                    conn.execute("BEGIN IMMEDIATE")
+                    current=conn.execute("""SELECT 1 FROM batch_items i JOIN batches b ON b.id=i.batch_id
+                        WHERE i.batch_id=? AND i.ordinal=? AND i.state='processing' AND b.state='running'""",
+                        (item["batch_id"],item["ordinal"])).fetchone()
+                    if not current:
+                        continue
                     rid = save_record(conn, img, boxes, item["station"], item["name"],
                                       batch_id=item["batch_id"], filename=item["filename"],
                                       temp=json.loads(item["process_parameters"] or "{}").get("temp"),

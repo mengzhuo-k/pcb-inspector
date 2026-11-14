@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>焊视 · 焊接质量工作台</title><link rel="stylesheet" href="/static/style.css?v=12"><link rel="stylesheet" href="/static/inspection.css?v=5"><link rel="stylesheet" href="/static/workspace.css?v=9"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>焊视 · 焊接质量工作台</title><link rel="stylesheet" href="/static/style.css?v=12"><link rel="stylesheet" href="/static/inspection.css?v=6"><link rel="stylesheet" href="/static/workspace.css?v=11"></head>
 <body class="inspection-page">
 <aside class="sidebar">
   <a class="brand" href="/static/index.html"><span class="brandmark">▦</span><span>焊视<small>PCB INSPECT</small></span></a>
@@ -20,13 +20,7 @@
   <header><span class="breadcrumb">质量管理 <span>/</span> 焊接质量工作台</span><div class="headeractions"><span>当前工位 <strong id="stationName">SMT-01</strong></span><span id="modelStatus" role="status">正在读取模型</span><label class="import-switch" title="控制后续识别图片是否自动进入训练图库"><input id="trainingImportSwitch" type="checkbox" role="switch" disabled><span>图片入训练库</span><small id="trainingImportState">读取中</small></label></div></header>
   <main>
     <p id="modelTestNotice" role="alert" hidden></p>
-    <div class="heading"><div><h1 id="title">采集检测</h1><p id="pageDescription">采集板面图像，自动分析缺陷并生成检验单</p></div><span id="stats"></span></div>
-    <section class="metrics" aria-label="检验统计">
-      <div><span>当前缺陷点位</span><strong class="warning" id="defectMetric">—</strong><small>待检测</small></div>
-      <div><span>待复核签字</span><strong class="warning" id="pendingMetric">0</strong><small>人工复核队列</small></div>
-      <div><span>累计检验</span><strong id="totalMetric">0</strong><small>已自动建档</small></div>
-      <div><span>检验合格率</span><strong class="success" id="rateMetric">—</strong><small id="signedBasis">暂无检测数据</small></div>
-    </section>
+    <div class="heading"><div><h1 id="title">采集检测</h1><p id="pageDescription">采集板面图像，自动分析缺陷并生成检验单</p></div></div>
     <section id="import" hidden>
       <article class="batch-import">
         <div class="cardhead"><h2>导入一个检测批次</h2><span class="muted">每批最多 200 张 · 逐张上传 · 后台检测</span></div>
@@ -38,10 +32,10 @@
     </section>
     <section id="training" hidden><iframe id="trainingFrame" title="漏接模型训练与标注" data-src="/training/?embedded=1"></iframe></section>
     <section id="rejected" hidden>
-      <article><div class="cardhead"><h2>已完成批次的不合格图片</h2><select id="rejectedBatchFilter" aria-label="筛选不合格批次"><option value="">全部已完成批次</option></select></div><div class="rejected-tools"><span id="rejectedSummary" class="muted"></span></div><div id="rejectedList"></div></article>
+      <article><div class="cardhead"><h2>不合格产品批次记录</h2><select id="rejectedBatchFilter" aria-label="筛选不合格批次"><option value="">全部已完成批次</option></select></div><div class="rejected-tools"><span id="rejectedSummary" class="muted"></span></div><div id="rejectedList"></div></article>
     </section>
     <section id="batch" hidden>
-      <button id="backToProcesses" class="quiet">← 返回批次列表</button><p id="archiveHint" class="muted" hidden>该批次已完成归档，仅供查看。</p>
+      <button id="backToProcesses" class="navigation-button">← 返回批次列表</button><p id="archiveHint" class="muted" hidden>该批次已完成归档，仅供查看。</p>
       <article class="recent batch-results">
         <div class="cardhead"><h2>批次检测结果</h2><strong id="batchDetailName" class="muted"></strong></div>
         <div class="batchbody">
@@ -51,15 +45,15 @@
             <p id="batchAlignmentStatus" class="muted" role="status"></p>
             <div class="batch-numbers" id="batchNumbers"></div>
             <div id="batchDefects" class="batch-defects" hidden></div>
-            <div class="sampling"><div><h3>机器初判合格图片抽样复查</h3><p class="muted">随机抽样仅从机器初判合格图片中选取；重新抽样会替换当前清单。</p></div><select id="sampleMode" aria-label="抽样方式"><option value="percent">按比例 %</option><option value="count">按张数</option></select><input id="sampleValue" aria-label="抽样比例或张数" type="number" min="1" max="100" step="1" value="10"><button id="drawSample">随机抽样</button><span id="sampleProgress" class="muted"></span></div>
-            <div class="gallery-tools"><div class="gallery-filters" id="galleryFilters"><button class="active" data-filter="all">全部</button><button data-filter="rejected">不合格</button><button data-filter="passed">合格</button><button data-filter="sampled">抽样清单</button><button data-filter="pending">抽样待复查</button><button data-filter="failed">检测失败</button></div><span class="muted">异常图片优先显示，点击图片进入复查</span></div>
+            <div class="sampling"><div><h3>机器初判合格图片抽样复查（可选）</h3><p class="muted">员工可按需抽样；不抽样或不复核也可完成归档。重新抽样会替换当前清单。</p></div><select id="sampleMode" aria-label="抽样方式"><option value="percent">按比例 %</option><option value="count">按张数</option></select><input id="sampleValue" aria-label="抽样比例或张数" type="number" min="1" max="100" step="1" value="10"><button id="drawSample">随机抽样</button><span id="sampleProgress" class="muted"></span></div>
+            <div class="gallery-tools"><div class="gallery-filters" id="galleryFilters"><button class="active" data-filter="all">全部</button><button data-filter="rejected">不合格</button><button data-filter="passed">合格</button><button data-filter="sampled">抽样清单</button><button data-filter="pending">抽样未复核</button><button data-filter="failed">检测失败</button></div><span class="muted">异常图片优先显示，点击图片查看，可自主复核</span></div>
             <div id="batchGallery" class="batch-gallery"></div>
           </div>
         </div>
       </article>
     </section>
     <section id="work">
-      <div class="review-navigation"><button id="backToBatch" class="quiet" hidden>← 返回批次结果</button><strong id="viewingFile"></strong><button id="previousImage" hidden>上一张</button><button id="nextImage" hidden>下一张</button></div>
+      <div class="review-navigation"><button id="backToBatch" class="navigation-button" hidden>← 返回批次结果</button><strong id="viewingFile"></strong><button id="previousImage" class="navigation-button" hidden>← 上一张</button><button id="nextImage" class="navigation-button" hidden>下一张 →</button><button id="reviewRecord" class="primary" hidden>复核（可选）</button></div>
       <article class="inspection-card">
         <div class="cardhead"><div class="paneltitle"><h2>板面检测</h2><span class="tag" id="source">样例板面</span><span id="alignmentStatus" class="tag" role="status" hidden></span><span id="templateStatus" class="tag" role="status" hidden></span></div><div class="viewactions"><button id="overlays" aria-pressed="true">标注已开启</button><button id="expand">放大查看</button></div></div>
         <div class="toolbar"><div class="captureactions"><label class="btn" for="file">↑ 上传图片</label><input type="file" accept="image/*" id="file" hidden><label class="btn" for="snap">拍照上传</label><input type="file" accept="image/*" capture="environment" id="snap" hidden><button id="camera">开启实时采集</button><button id="sample" class="quiet">载入示例</button></div></div>
@@ -92,14 +86,14 @@
         </div>
         <div class="image-footer"><span class="muted">缺陷框定位 · 板面矫正 · 模型置信度</span><div class="quality"><span>本批次合格率</span><output id="passRate">—</output><small id="rateBasis">输入批次后显示</small></div></div>
       </article>
-      <div id="result"><article class="inspection-empty"><h2>检验单将在检测后自动生成</h2><p>采集信息、缺陷位置和分析建议会自动入表，完成复核后签字归档。</p></article></div>
+      <div id="result"><article class="inspection-empty"><h2>检验单将在检测后自动生成</h2><p>采集信息、缺陷位置和分析建议会自动入表，默认采用机器判定，员工可自主选择复核，不复核也可归档。</p></article></div>
     </section>
-    <section id="logs" hidden><article><div class="cardhead"><h2>批次检验记录</h2><input id="filter" placeholder="搜索批次名称或工位"></div><div id="history"></div></article><article class="recent"><div class="cardhead"><h2>近 7 日检验量</h2><span class="muted">按采集日期</span></div><div id="trend" class="trend"></div></article></section>
+    <section id="logs" hidden><article><div class="cardhead"><h2>质量档案批次记录</h2><input id="filter" placeholder="搜索批次名称或工位"></div><div id="history"></div></article><article class="recent"><div class="cardhead"><h2>近 7 日检验量</h2><span class="muted">按采集日期</span></div><div id="trend" class="trend"></div></article></section>
     <p id="status" role="status"></p>
   </main>
 </div>
-<script src="/static/app.js?v=25"></script>
-<script src="/static/batch.js?v=25"></script>
+<script src="/static/app.js?v=33"></script>
+<script src="/static/batch.js?v=32"></script>
 <script src="/static/model-test-notice.js"></script>
-<script src="/static/model.js?v=5"></script>
+<script src="/static/model.js?v=7"></script>
 </body></html>

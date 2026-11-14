@@ -1,7 +1,7 @@
 {
-  "version": "smd-defdb-v1",
-  "created": "2026-11-10T19:04:10+08:00",
-  "weights": "smd_defect_cls_v1.pt",
+  "version": "v17",
+  "created": "2026-11-12T15:31:27+08:00",
+  "weights": "C:\\Users\\32537\\Desktop\\开发\\pcb-inspector\\data\\platform\\models\\242502c9734b4a6cb8a28c6c1ec8f8f5\\v17\\best.pt",
   "imgsz": 224,
   "threshold": 0.5,
   "classes": [
@@ -23,9 +23,9 @@
     "solder_bridge": "桥接"
   },
   "metrics": {
-    "top1": 0.6292,
-    "top5": 0.9875,
-    "val_top1": 0.7071,
+    "top1": 0.675,
+    "top5": 0.9917,
+    "val_top1": 0.65,
     "val_top5": 1.0,
     "test_images": 240,
     "defect_precision": 1.0,
@@ -33,29 +33,29 @@
     "defect_f1": 0.9756,
     "defect_accuracy": 0.9583,
     "per_class_recall": {
-      "damaged_component": 0.0667,
+      "damaged_component": 0.0333,
       "excess_solder": 0.975,
       "good_solder": 1.0,
-      "misaligned_component": 0.6667,
-      "missing_component": 0.0,
+      "misaligned_component": 0.7667,
+      "missing_component": 0.4667,
       "poor_solder": 1.0,
-      "solder_bridge": 0.5
+      "solder_bridge": 0.375
     },
     "confusion_matrix": {
       "damaged_component": {
-        "damaged_component": 2,
+        "damaged_component": 1,
         "excess_solder": 0,
         "good_solder": 10,
         "misaligned_component": 0,
-        "missing_component": 1,
+        "missing_component": 0,
         "poor_solder": 10,
-        "solder_bridge": 7
+        "solder_bridge": 9
       },
       "excess_solder": {
-        "damaged_component": 1,
+        "damaged_component": 0,
         "excess_solder": 39,
         "good_solder": 0,
-        "misaligned_component": 0,
+        "misaligned_component": 1,
         "missing_component": 0,
         "poor_solder": 0,
         "solder_bridge": 0
@@ -71,19 +71,19 @@
       },
       "misaligned_component": {
         "damaged_component": 0,
-        "excess_solder": 1,
+        "excess_solder": 5,
         "good_solder": 0,
-        "misaligned_component": 20,
-        "missing_component": 9,
-        "poor_solder": 0,
+        "misaligned_component": 23,
+        "missing_component": 1,
+        "poor_solder": 1,
         "solder_bridge": 0
       },
       "missing_component": {
-        "damaged_component": 30,
+        "damaged_component": 10,
         "excess_solder": 0,
         "good_solder": 0,
-        "misaligned_component": 0,
-        "missing_component": 0,
+        "misaligned_component": 6,
+        "missing_component": 14,
         "poor_solder": 0,
         "solder_bridge": 0
       },
@@ -100,14 +100,31 @@
         "damaged_component": 16,
         "excess_solder": 0,
         "good_solder": 0,
-        "misaligned_component": 0,
+        "misaligned_component": 1,
         "missing_component": 0,
-        "poor_solder": 4,
-        "solder_bridge": 20
+        "poor_solder": 8,
+        "solder_bridge": 15
       }
     }
   },
-  "dataset": {
+  "dataset": "b039e99fc6f44c1eb8b4245e9f3970ea",
+  "training": {
+    "model": "yolo11n-cls.pt",
+    "epochs": 40,
+    "imgsz": 224,
+    "batch": 32,
+    "device": "cpu",
+    "patience": 12,
+    "optimizer": "auto (AdamW)",
+    "workers": 0,
+    "cache": "none",
+    "channels_last": false,
+    "threads": 8,
+    "seconds": 723.7
+  },
+  "name": "SMD DefDB 七类全量模型",
+  "template": "cls",
+  "dataset_info": {
     "name": "SMD DefDB (PCB SMD component)",
     "doi": "10.5281/zenodo.20001570",
     "url": "https://zenodo.org/records/20001570",
@@ -119,18 +136,11 @@
     "val_images": 140,
     "test_images": 240
   },
-  "training": {
-    "model": "yolo11n-cls.pt",
-    "epochs": 40,
-    "imgsz": 224,
-    "batch": 64,
-    "device": "cpu",
-    "patience": 12,
-    "optimizer": "auto (AdamW)",
-    "workers": 4,
-    "cache": "ram",
-    "channels_last": false,
-    "threads": 8,
-    "seconds": 398.1
-  }
+  "source_archive": "C:\\Users\\32537\\Desktop\\开发\\pcb-inspector-modelscope\\data\\datasets\\smd_defdb\\dataset.tar",
+  "archive_sha256": "a00f76916b4a969d04b77afabd154543464c8411bc0013b1e7b0f90bf32a2030",
+  "use_with_sites": true,
+  "allow_unaligned": true,
+  "model_id": "043598424bbc445ca4be7120abefd3d2",
+  "authoritative_board_decision": true,
+  "initial_model_sha256": "c62d41bf9625777760018bf914d2e6cd472420ccd01706d97a61cb6c82502bd7"
 }

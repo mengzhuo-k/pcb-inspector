@@ -101,7 +101,7 @@ class DefectClassifier:
             raise ValueError("模型未返回分类概率")
         labels = card.get("labels") or LABELS
         return dict(model=model, version=card.get("version") or "smd-defdb",
-                    label="SMD DefDB 七类缺陷识别 " + (card.get("version") or ""),
+                    label=(card.get("name") or "SMD DefDB 七类缺陷识别") + " " + (card.get("version") or ""),
                     classes=loaded, labels=labels, imgsz=imgsz,
                     threshold=threshold, sha256=digest,
                     card=card,
@@ -121,7 +121,10 @@ class DefectClassifier:
                         labels=self.active["labels"], threshold=self.active["threshold"],
                         imgsz=self.active["imgsz"], sha256=self.active["sha256"],
                         loaded_at=self.active["loaded_at"], metrics=metrics,
-                        dataset=card.get("dataset"), last_error=self.last_error)
+                        dataset=card.get("dataset_info") or card.get("dataset"),
+                        use_with_sites=bool(card.get("use_with_sites",False)),
+                        allow_unaligned=bool(card.get("allow_unaligned",False)),
+                        last_error=self.last_error)
 
     def predict(self, image, threshold=None):
         """Return a whole-board verdict, or None when the classifier is unavailable.
@@ -154,7 +157,8 @@ class DefectClassifier:
             return dict(key=top["key"], label=top["label"], score=top["score"],
                         defect_score=defect_score, is_defect=is_defect,
                         threshold=gate, top=ranking[:3],
-                        model_version=active["version"], model_sha256=active["sha256"])
+                        model_version=active["version"], model_sha256=active["sha256"],
+                        authoritative=bool(active["card"].get("authoritative_board_decision",False)))
 
 
 def build_classifier(root=None):

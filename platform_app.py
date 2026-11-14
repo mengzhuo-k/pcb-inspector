@@ -745,7 +745,25 @@ def solder_template(pid):
     expected = existing["revision"] if existing else 0
     if payload.get("revision", 0) != expected:
         abort(409, "点位模板已被修改，请重新打开图片")
-    if payload.get("action") == "detect":
+    if payload.get("action") == "preview":
+        from solder_sites import detect_sites
+        try:
+            sites=detect_sites(reference["path"],sensitivity=payload.get("sensitivity","precise"))
+        except (ValueError,OSError) as exc:
+            abort(400,str(exc))
+        if existing and payload.get("keep_manual",True):
+            manual=[site for site in json_value(existing["sites"],[]) if site.get("origin")=="manual"]
+            manual_ids={site["id"] for site in manual}
+            retained=[]
+            for site in sites:
+                area=(site["x2"]-site["x1"])*(site["y2"]-site["y1"])
+                if any(max(0,min(site["x2"],other["x2"])-max(site["x1"],other["x1"]))*max(0,min(site["y2"],other["y2"])-max(site["y1"],other["y1"]))/area>.4 for other in manual):
+                    continue
+                if site["id"] in manual_ids:
+                    site={**site,"id":"A"+uuid.uuid4().hex[:12]}
+                retained.append(site)
+            sites=manual+retained
+    elif payload.get("action") == "detect":
         if existing and existing["reference_id"] == reference["id"]:
             sites = json_value(existing["sites"], [])
         else:
@@ -776,12 +794,16 @@ def solder_template(pid):
         ids.add(sid)
         cleaned.append(dict(id=sid, x1=x1, y1=y1, x2=x2, y2=y2,
                             origin="manual" if site.get("origin") == "manual" else "auto"))
+        if site.get("kind") in ("through_hole","smd_joint"):
+            cleaned[-1]["kind"]=site["kind"]
     with db() as conn:
         conn.execute("BEGIN IMMEDIATE")
         current_ref = conn.execute("SELECT image_id FROM alignment_references WHERE project_id=?", (pid,)).fetchone()
         current = conn.execute("SELECT revision FROM solder_templates WHERE project_id=?", (pid,)).fetchone()
         if not current_ref or current_ref["image_id"] != reference["id"] or (current["revision"] if current else 0) != expected:
             abort(409, "标准图或点位模板已变化，请重新打开图片")
+        if payload.get("action")=="preview":
+            return jsonify(project_id=pid,reference_id=reference["id"],revision=expected,sites=cleaned,preview=True)
         conn.execute("INSERT OR REPLACE INTO solder_templates VALUES(?,?,?,?,?)",
                      (pid, reference["id"], json.dumps(cleaned), expected + 1, now()))
         result = site_template(conn, pid)
@@ -994,7 +1016,7 @@ def model_update_status(pid):
             mark_model_update(conn, pid)
         update = conn.execute("SELECT * FROM model_updates WHERE project_id=?", (pid,)).fetchone()
         testing = latest_test(conn, pid)
-        latest = conn.execute("SELECT id,version,created,published FROM models WHERE project_id=? ORDER BY created DESC,rowid DESC LIMIT 1", (pid,)).fetchone()
+        latest = conn.execute("SELECT id,version,created,published,card FROM models WHERE project_id=? ORDER BY created DESC,rowid DESC LIMIT 1", (pid,)).fetchone()
         counts = conn.execute("""SELECT count(*) AS total,
             sum(CASE WHEN review_status='approved' THEN 1 ELSE 0 END) AS saved
             FROM images WHERE project_id=?""", (pid,)).fetchone()
@@ -1004,7 +1026,7 @@ def model_update_status(pid):
     result = dict(update) if update else dict(state="waiting", message="上传图片并保存缺陷标注后自动更新模型")
     if job and job["state"] == "running":
         result["state"] = "running"
-    result.update(testing=testing, latest_model=dict(latest) if latest else None,
+    result.update(testing=testing, latest_model=dict(**model_identity(latest),created=latest["created"],published=latest["published"]) if latest else None,
                   images=counts["total"], saved=counts["saved"] or 0,selection=selection,
                   training_base=training_base,auto_train_enabled=AUTO_TRAIN)
     return jsonify(result)
@@ -1370,17 +1392,25 @@ def next_model_version(conn,pid):
     return f'v{number}'
 
 
+def model_identity(row):
+    result = dict(id=row["id"],version=row["version"])
+    name = json_value(row["card"],{}).get("name")
+    if name:
+        result["name"] = name
+    return result
+
+
 def selection_status(conn,pid):
-    current=conn.execute("""SELECT m.id,m.version FROM deployments d JOIN models m ON m.id=d.model_id
+    current=conn.execute("""SELECT m.id,m.version,m.card FROM deployments d JOIN models m ON m.id=d.model_id
         WHERE d.project_id=? AND d.active=1 ORDER BY (d.station='') DESC,d.id DESC LIMIT 1""",(pid,)).fetchone()
     return dict(mode='manual',
-                current_model=dict(current) if current else None)
+                current_model=model_identity(current) if current else None)
 
 
 def training_base_status(conn,pid):
-    row=conn.execute('''SELECT m.id,m.version FROM project_training_base b JOIN models m ON m.id=b.model_id
+    row=conn.execute('''SELECT m.id,m.version,m.card FROM project_training_base b JOIN models m ON m.id=b.model_id
         WHERE b.project_id=? AND m.project_id=?''',(pid,pid)).fetchone()
-    return dict(model=dict(row) if row else None)
+    return dict(model=model_identity(row) if row else None)
 
 
 @app.route('/api/projects/<pid>/training-base',methods=['GET','POST'])
@@ -1479,6 +1509,7 @@ def list_models(pid):
         rows = conn.execute("SELECT * FROM models WHERE project_id=? ORDER BY created DESC,rowid DESC", (pid,)).fetchall()
         stations={}
         base=training_base_status(conn,pid)['model']
+        classifier=conn.execute("SELECT value FROM platform_settings WHERE key='active_classifier_model'").fetchone()
         for deployment in conn.execute("SELECT model_id,station FROM deployments WHERE project_id=? AND active=1",(pid,)):
             stations.setdefault(deployment['model_id'],[]).append(deployment['station'])
     result = []
@@ -1486,14 +1517,114 @@ def list_models(pid):
         item = dict(row)
         item["metrics"] = json_value(item.get("metrics"))
         item["card"] = json_value(item.get("card"))
+        item["name"] = (item["card"] or {}).get("name") or item["version"]
         item["template"] = (item["card"] or {}).get("template",'det')
         item['active_stations']=stations.get(item['id'],[])
-        item['is_active']=bool(item['active_stations'])
+        item['is_classifier_active']=bool(classifier and classifier['value']==item['id'])
+        item['is_active']=bool(item['active_stations']) or item['is_classifier_active']
         item['is_training_base']=bool(base and base['id']==item['id'])
-        item['deployed_station']=item['active_stations'][0] if item['is_active'] else None
+        item['deployed_station']=item['active_stations'][0] if item['active_stations'] else None
         item['weights_available']=Path(item['weights'] or '').is_file()
         result.append(item)
     return jsonify(result)
+
+
+def model_dataset(mid):
+    with db() as conn:
+        model = conn.execute("SELECT * FROM models WHERE id=?",(mid,)).fetchone()
+        if not model:
+            abort(404,"模型不存在或已删除")
+        job = conn.execute("SELECT dataset_id FROM jobs WHERE id=? AND project_id=?",(model["job_id"],model["project_id"])).fetchone()
+        did = job["dataset_id"] if job else json_value(model["card"],{}).get("dataset")
+        dataset = conn.execute("SELECT * FROM datasets WHERE id=? AND project_id=?",(did,model["project_id"])).fetchone() if did else None
+    return model,dataset
+
+
+def model_snapshot(mid,iid):
+    model,dataset = model_dataset(mid)
+    with db() as conn:
+        row = conn.execute("SELECT * FROM dataset_snapshots WHERE dataset_id=? AND image_id=?",(dataset["id"],iid)).fetchone() if dataset else None
+    if not row:
+        abort(404,"该图片不属于此模型的训练数据集")
+    item = json.loads(row["metadata"])
+    item.update(id=row["image_id"],project_id=model["project_id"],split=row["split"],
+                labels=json.loads(row["labels"]),snapshot=True,readonly=True,
+                state="labeled",review_status="approved",alignment=None,annotation_view={})
+    for label in item["labels"]:
+        label["polygon"] = json_value(label.get("polygon"),[]) if isinstance(label.get("polygon"),str) else label.get("polygon",[])
+    item["annotation_type"] = json_value(model["card"],{}).get("template","det")
+    item["class_label"] = ALL_LABELS.get(item.get("primary_class"),item.get("primary_class"))
+    item["file_url"] = f'/api/models/{mid}/images/{iid}/file'
+    return item
+
+
+@app.get('/api/models/<mid>/images')
+def model_images(mid):
+    model,dataset = model_dataset(mid)
+    with db() as conn:
+        rows = conn.execute("SELECT * FROM dataset_snapshots WHERE dataset_id=? ORDER BY split,image_id",(dataset["id"],)).fetchall() if dataset else []
+    items=[]
+    counts=dict(train=0,val=0,test=0)
+    for row in rows:
+        metadata=json.loads(row["metadata"])
+        counts[row["split"]]=counts.get(row["split"],0)+1
+        items.append(dict(id=row["image_id"],project_id=model["project_id"],
+            filename=metadata.get("filename",row["image_id"]),split=row["split"],
+            state="labeled",review_status="approved",readonly=True,snapshot=True,
+            label_count=len(json.loads(row["labels"])),
+            annotation_type=json_value(model["card"],{}).get("template","det"),
+            primary_class=metadata.get("primary_class"),class_label=ALL_LABELS.get(metadata.get("primary_class"),metadata.get("primary_class")),
+            file_url=f'/api/models/{mid}/images/{row["image_id"]}/file'))
+    return jsonify(model=model_identity(model),dataset_id=dataset["id"] if dataset else None,
+        items=items,total=len(items),splits=counts,
+        message="" if dataset and rows else "此模型没有可追溯的训练图片记录")
+
+
+@app.get('/api/models/<mid>/images/<iid>')
+def model_image_detail(mid,iid):
+    return jsonify(model_snapshot(mid,iid))
+
+
+@app.get('/api/models/<mid>/images/<iid>/file')
+def model_image_file(mid,iid):
+    item=model_snapshot(mid,iid)
+    path=Path(item["path"]).resolve()
+    if not path.is_relative_to(IMAGES.resolve()) or not path.is_file():
+        abort(404,"该模型的训练图片文件不可用")
+    if hashlib.sha256(path.read_bytes()).hexdigest()!=item["sha256"]:
+        abort(409,"该模型的训练图片文件已变化")
+    width=request.args.get("w",type=int)
+    if width and width>0:
+        with Image.open(path) as source:
+            picture=source.convert("RGB")
+            picture.thumbnail((min(width,1600),min(width,1600)*3))
+            buffer=io.BytesIO()
+            picture.save(buffer,"JPEG",quality=85)
+        buffer.seek(0)
+        return send_file(buffer,mimetype="image/jpeg")
+    return send_file(path,mimetype="image/jpeg")
+
+
+@app.patch('/api/models/<mid>/name')
+def rename_model(mid):
+    payload = request.get_json(silent=True)
+    if not isinstance(payload,dict) or not isinstance(payload.get("name"),str):
+        abort(400,"请输入模型名称")
+    name = payload["name"].strip()
+    if not name or len(name)>80 or any(ord(char)<32 or ord(char)==127 for char in name):
+        abort(400,"模型名称须为 1 至 80 个字符，不能包含换行或控制字符")
+    with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT * FROM models WHERE id=?",(mid,)).fetchone()
+        if not row:
+            abort(404,"模型不存在或已删除")
+        card = json_value(row["card"],{})
+        current = card.get("name") or row["version"]
+        if "expected_name" in payload and payload["expected_name"] != current:
+            abort(409,"模型名称已被修改，请刷新后重试")
+        card["name"] = name
+        conn.execute("UPDATE models SET card=? WHERE id=?",(json.dumps(card,ensure_ascii=False),mid))
+    return model_detail(mid)
 
 
 @app.delete('/api/models/<mid>')
@@ -1503,6 +1634,8 @@ def delete_model(mid):
         row=conn.execute('SELECT * FROM models WHERE id=?',(mid,)).fetchone()
         if not row:
             abort(404,'模型不存在或已删除')
+        if conn.execute("SELECT 1 FROM platform_settings WHERE key='active_classifier_model' AND value=?",(mid,)).fetchone():
+            abort(409,'此模型正在用于整板分类，请先切换分类模型后再删除')
         if conn.execute('SELECT 1 FROM deployments WHERE model_id=? AND active=1',(mid,)).fetchone() or conn.execute(
             "SELECT 1 FROM project_model_selection WHERE model_id=? AND mode='manual'",(mid,)).fetchone():
             abort(409,'此模型正在用于识别，请先切换到其他模型后再删除')
@@ -1536,6 +1669,7 @@ def model_detail(mid):
     result = dict(row)
     result["metrics"] = json_value(result.get("metrics"))
     result["card"] = json_value(result.get("card"))
+    result["name"] = (result["card"] or {}).get("name") or result["version"]
     return jsonify(result)
 
 

@@ -1,5 +1,8 @@
 # Local virtualenv (recreatable from requirements.txt; contains files >100 MB)
 .venv/
+packaging/tools/
+packaging/build/
+packaging/build.log
 
 # Python bytecode
 __pycache__/

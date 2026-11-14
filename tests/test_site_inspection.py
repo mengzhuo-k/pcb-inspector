@@ -86,6 +86,8 @@ class SiteGeometryTests(unittest.TestCase):
 class SiteInspectionTests(unittest.TestCase):
     def setUp(self):
         self.client=app.app.test_client()
+        options=patch.object(app.defect_classifier,"status",return_value={})
+        options.start();self.addCleanup(options.stop)
         self.original=Image.new("RGB",(400,240),"green")
         self.reference=Path(storage.name)/"reference.jpg"
         self.original.save(self.reference)
@@ -120,6 +122,46 @@ class SiteInspectionTests(unittest.TestCase):
             self.assertEqual(saved["inspection"],response.json["inspection"])
             self.assertEqual(saved["decision"],"不合格")
             self.assertEqual(saved["model_version"],"v-sites")
+
+    def test_opt_in_classifier_combines_board_verdict_with_template_detection(self):
+        classification=dict(key="poor_solder",label="虚焊/冷焊",score=.9,defect_score=.95,is_defect=True,threshold=.5,top=[])
+        with patch.object(app.platform_runtime,"alignment_reference",return_value=self.template), \
+             patch("pcb_alignment.align",return_value=self.aligned), \
+             patch.object(app.platform_runtime,"predict_many",side_effect=self.predict), \
+             patch.object(app.defect_classifier,"status",return_value=dict(use_with_sites=True,allow_unaligned=True)), \
+             patch.object(app.defect_classifier,"predict",return_value=classification):
+            response=self.client.post("/api/preview",data=self.upload())
+            self.assertEqual(response.status_code,200,response.json)
+            self.assertEqual(response.json["classification"]["key"],"poor_solder")
+            self.assertEqual(response.json["inspection"]["checked_sites"],2)
+
+    def test_authoritative_board_classifier_controls_verdict_and_keeps_point_candidates(self):
+        classification=dict(key="good_solder",label="未见明显缺陷",score=.9,defect_score=.1,is_defect=False,
+            threshold=.5,top=[],authoritative=True,model_version="v-cls",model_sha256="sha-cls")
+        with patch.object(app.platform_runtime,"alignment_reference",return_value=self.template), \
+             patch("pcb_alignment.align",return_value=self.aligned), \
+             patch.object(app.platform_runtime,"predict_many",side_effect=self.predict), \
+             patch.object(app.defect_classifier,"status",return_value=dict(use_with_sites=True,allow_unaligned=True)), \
+             patch.object(app.defect_classifier,"predict",return_value=classification):
+            response=self.client.post("/api/records",data=self.upload())
+            self.assertEqual(response.status_code,200,response.json)
+            self.assertEqual(response.json["decision"],"合格")
+            self.assertEqual(response.json["model_version"],"v-cls")
+            self.assertEqual(response.json["classification"]["point_model_version"],"v-sites")
+            self.assertEqual(len(response.json["boxes"]),1)
+
+    def test_opt_in_multi_board_classifier_can_run_without_matching_reference(self):
+        classification=dict(key="good_solder",label="未见明显缺陷",score=.9,defect_score=.1,is_defect=False,threshold=.5,top=[])
+        with patch.object(app.platform_runtime,"alignment_reference",return_value=self.template), \
+             patch("pcb_alignment.align",side_effect=ValueError("different board")), \
+             patch.object(app.platform_runtime,"predict",return_value=(result([]),"v-det","sha")), \
+             patch.object(app.defect_classifier,"status",return_value=dict(use_with_sites=True,allow_unaligned=True)), \
+             patch.object(app.defect_classifier,"predict",return_value=classification):
+            response=self.client.post("/api/preview",data=self.upload())
+            self.assertEqual(response.status_code,200,response.json)
+            self.assertIsNone(response.json["inspection"])
+            self.assertEqual(response.json["classification"]["key"],"good_solder")
+            self.assertTrue(any("未匹配示例图" in issue for issue in response.json["issues"]))
 
     def test_empty_template_or_alignment_failure_does_not_silently_run_whole_board(self):
         with patch.object(app.platform_runtime,"alignment_reference",return_value={**self.template,"sites":[]}), \

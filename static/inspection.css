@@ -102,3 +102,7 @@ article{background:#fff;border-color:#dce5e7;border-radius:10px;box-shadow:0 3px
  .viewer:fullscreen #frame{height:auto;min-height:180px;flex:1}
  .viewer:fullscreen .detection-panel{max-height:40dvh;flex:none;overflow-y:auto}
 }
+
+.optional-review{border-top:1px solid #dce9e4;padding:18px 22px}
+.optional-review>summary{cursor:pointer;color:#557276;font-weight:600}
+.optional-review>p{margin-top:12px}

@@ -236,8 +236,6 @@ function showImage(input, boxes, source, classification = null, inspection = nul
   const processed = source === '已建档' || source.startsWith('实时检测') || source.startsWith('智能检测')
   document.querySelector('.detection-panel').classList.toggle('has-results',processed)
   const defectCount = inspection ? new Set(boxes.map(box=>box.site_id)).size : boxes.length
-  $('defectMetric').textContent = processed ? defectCount : '—'
-  $('defectMetric').nextElementSibling.textContent = processed ? (defectCount ? '项识别结果' : '未见明显缺陷') : '待检测'
   $('detectionCount').textContent = processed ? (inspection ? defectCount+' / '+inspection.checked_sites+' 处检出缺陷' : boxes.length+' 个点位') : '待检测'
   $('detectionEmpty').hidden = !!boxes.length || !!classification
   $('detectionEmpty').innerHTML = boxes.length ? '' : '未检出超过阈值的缺陷点位<br><small>整板分类结果显示在上方</small>'
@@ -295,6 +293,7 @@ document.addEventListener('fullscreenchange',draw)
 function resetCaptureView(){
   currentRecordId = null
   currentReadOnly=false
+  $('reviewRecord').hidden=true
   $('inspect').inert=false
   $('run').hidden=false
   $('run').disabled=false
@@ -404,7 +403,7 @@ function showAlignmentStatus(alignment){
 
 function present(r) {
   $('title').textContent='采集检测'
-  $('pageDescription').textContent='已保存的识别结果 · '+(r.readonly ? '归档结果仅供查看' : '可复核检验结论并签字')
+  $('pageDescription').textContent='已保存的识别结果 · '+(r.readonly ? '归档结果仅供查看' : '员工可自主选择复核')
   stopCamera()
   currentRecordId = r.id
   currentReadOnly=!!r.readonly || !!r.exception_mode
@@ -434,6 +433,7 @@ function present(r) {
   const sheet=[
     ['检验编号',r.id.slice(0,12)],['采集时间',date(r.created)],['生产工位',r.station],['生产批次',r.batch],
     ['检测模型',r.model_version || '历史版本'],
+    ...(r.classification?.authoritative ? [['判定依据','整板分类模型'],['点位辅助模型',r.classification.point_model_version || '未启用']] : []),
   ].map(([name,value])=>'<div><dt>'+esc(name)+'</dt><dd>'+esc(value)+'</dd></div>').join('')
   const audit = r.reviews?.length ? '<details class="review-history"><summary>复查记录（'+r.reviews.length+' 次）</summary>'+r.reviews.map(item=>'<p>'+date(item.created)+'　'+esc(item.reviewer)+'　'+esc(item.decision)+'　'+esc(item.comment)+'</p>').join('')+'</details>' : ''
   const version = r.model_version || r.boxes[0]?.model || '历史记录未标明版本'
@@ -444,16 +444,23 @@ function present(r) {
   const manualOptions = ['漏焊','虚焊','冷焊','桥接','多锡','焊盘损伤','元件偏移','缺件','氧化','烧伤']
   const manualChecked = Array.isArray(r.manual) ? r.manual : []
   const manualTags = '<div class="manual-tags"><span>补标缺陷类型（可多选）</span>'+manualOptions.map(item=>'<label><input type="checkbox" name="manual" value="'+item+'"'+(manualChecked.includes(item) ? ' checked' : '')+'>'+item+'</label>').join('')+'</div>'
-  const review = r.review_required ? '<form id="review"><h3>'+(r.signed ? '复核已签字 · '+esc(r.reviewer) : '复核签字')+'</h3><p class="muted">机器初判 '+esc(r.auto_decision || r.decision)+' · '+(r.signed ? '签字时间 '+date(r.signed) : '请核对缺陷位置和检验结论后签字')+'</p><input type="hidden" name="revision" value="'+(r.revision || 0)+'"><details><summary>补充缺陷与复核意见</summary>'+manualTags+'<label>复核意见<textarea name="comment" maxlength="2000" rows="2">'+esc(r.comment)+'</textarea></label></details><label>复核结论<select name="decision" required><option value="合格">合格</option><option value="不合格">不合格</option></select></label><label>质检员签字<input name="reviewer" maxlength="80" required value="'+esc(r.reviewer || localStorage.getItem('pcbReviewer') || '')+'" placeholder="输入姓名"></label><button class="primary">确认结论并签字</button>'+audit+'</form>' : audit
-  $('result').innerHTML='<article><div class="cardhead"><h2>'+(r.exception_mode ? '不合格图片 · 归档只读' : r.readonly ? '归档检验单 · 只读' : '自动检验单')+'</h2><div class="viewactions"><span class="tag" data-state="'+esc(r.decision || '待检测')+'">'+esc(r.decision || '待检测')+'</span><button id="deleteCurrent" class="danger">删除检验单</button></div></div><div class="body"><dl class="inspection-sheet">'+sheet+'</dl>'+verdict+'<h3>缺陷分析与改进建议 · '+r.boxes.length+' 个定位结果</h3><div class="findings-grid">'+(findings || '<p class="muted">当前模型未检出超过阈值的缺陷，请结合板面图像进行复核。</p>')+'</div>'+(r.note ? '<p class="record-note">现场记录 · '+esc(r.note)+'</p>' : '')+'</div>'+review+'</article>'
+  const review = r.review_available ? '<details class="optional-review"><summary>自主复核</summary><p class="muted">默认采用机器判定；需要调整时展开复核，不复核也可归档。</p><form id="review"><h3>'+(r.signed ? '复核已签字 · '+esc(r.reviewer) : '复核签字')+'</h3><p class="muted">机器初判 '+esc(r.auto_decision || r.decision)+' · '+(r.signed ? '签字时间 '+date(r.signed) : '如需复核，请核对缺陷位置和检验结论后签字')+'</p><input type="hidden" name="revision" value="'+(r.revision || 0)+'"><details><summary>补充缺陷与复核意见</summary>'+manualTags+'<label>复核意见<textarea name="comment" maxlength="2000" rows="2">'+esc(r.comment)+'</textarea></label></details><label>复核结论<select name="decision" required><option value="合格">合格</option><option value="不合格">不合格</option></select></label><label>质检员签字<input name="reviewer" maxlength="80" required value="'+esc(r.reviewer || localStorage.getItem('pcbReviewer') || '')+'" placeholder="输入姓名"></label><button class="primary">确认结论并签字</button></form></details>'+audit : audit
+  $('result').innerHTML='<article><div class="cardhead"><h2>'+(r.exception_mode ? '不合格图片 · 归档只读' : r.readonly ? '归档检验单 · 只读' : '自动检验单')+'</h2><div class="viewactions"><span class="tag" data-state="'+esc(r.decision || '待检测')+'">'+esc(r.decision || '待检测')+'</span></div></div><div class="body"><dl class="inspection-sheet">'+sheet+'</dl>'+verdict+'<h3>缺陷分析与改进建议 · '+r.boxes.length+' 个定位结果</h3><div class="findings-grid">'+(findings || '<p class="muted">当前模型未检出超过阈值的缺陷，可按需结合板面图像进行复核。</p>')+'</div>'+(r.note ? '<p class="record-note">现场记录 · '+esc(r.note)+'</p>' : '')+'</div>'+review+'</article>'
   if (r.issues?.length) {
     const warning = document.createElement('p')
     warning.className = 'hint'
     warning.textContent = '检测提示 · ' + r.issues.join('；')
     $('result').prepend(warning)
   }
-  $('deleteCurrent').hidden=currentReadOnly
-  $('deleteCurrent').onclick = () => deleteRecord(r.id,r.batch)
+  $('reviewRecord').hidden=!r.review_available
+  $('reviewRecord').textContent=r.signed ? '重新复核（可选）' : '复核（可选）'
+  $('reviewRecord').onclick=()=>{
+    const panel=document.querySelector('.optional-review')
+    if (!panel) return
+    panel.open=true
+    panel.scrollIntoView({behavior:'smooth',block:'start'})
+    $('review').elements.decision.focus({preventScroll:true})
+  }
   if ($('review')) $('review').elements.decision.value = r.decision || ''
   if ($('review')) $('review').onsubmit = async e => {
     e.preventDefault()
@@ -484,7 +491,7 @@ $('inspect').onsubmit = async e => {
     const r = await api('/api/records',data)
     present(r)
     await refresh()
-    message('检验单已自动生成，请核对结果并签字。')
+    message('检验单已自动生成，默认采用机器判定，可自主选择复核。')
     $('result').scrollIntoView({behavior:'smooth'})
   } catch(err) {message(err.message)} finally {
     busy=false
@@ -496,35 +503,12 @@ function recordRow(r) {
   const row = document.createElement('div')
   row.className='historyrow'
   const state = r.decision || '待检测'
-  row.innerHTML='<strong>'+esc(r.filename || r.batch)+'</strong><span>'+esc(r.station)+'</span><span>'+date(r.created)+'</span><span>'+r.count+' 项候选</span><span class="tag" data-state="'+esc(state)+'">'+esc(state)+'<br><small>'+(r.signed ? '已复查' : r.sampled ? '抽样待复查' : r.decision === '不合格' ? '异常待复查' : '自动检测')+'</small></span><div class="rowactions"><button class="open-record">查看</button><button class="danger delete-record">删除</button></div>'
-  row.querySelector('.delete-record').onclick = () => deleteRecord(r.id,r.batch)
+  row.innerHTML='<strong>'+esc(r.filename || r.batch)+'</strong><span>'+esc(r.station)+'</span><span>'+date(r.created)+'</span><span>'+r.count+' 项候选</span><span class="tag" data-state="'+esc(state)+'">'+esc(state)+'<br><small>'+(r.signed ? '已复查' : r.sampled ? '抽样未复核（可选）' : '机器判定')+'</small></span><div class="rowactions"><button class="open-record navigation-button">查看检验单 →</button></div>'
   row.querySelector('.open-record').onclick=()=>inspectStoredRecord(r.id,'logs')
   return row
 }
-async function deleteRecord(id,batch) {
-  if (busy) { message('请等待当前检测完成'); return }
-  if (!window.confirm('删除批次「'+batch+'」的这份检验单？图片、检测结果和签核信息将一并删除。')) return
-  try {
-    await api('/api/records/'+id,undefined,'DELETE')
-    if (currentRecordId === id) {
-      stopCamera()
-      currentRecordId = null
-      $('result').replaceChildren()
-      showImage('/static/sample-missing.png?v=20261110b',[],'漏焊样例')
-    }
-    await refresh()
-    if (typeof activeBatchId !== 'undefined' && activeBatchId) await openBatch(activeBatchId)
-    if (typeof refreshWorkspace === 'function') await refreshWorkspace()
-    message('检验单已删除')
-  } catch(err) {
-    if (currentRecordId === id && err.message.includes('不存在')) {
-      currentRecordId = null
-      $('result').replaceChildren()
-      showImage('/static/sample-missing.png?v=20261110b',[],'漏焊样例')
-    }
-    await refresh().catch(()=>{})
-    message(err.message)
-  }
+function isPatrolRecord(record) {
+  return !record.batch_id && /^(巡检|巡视)-/.test(record.batch || '')
 }
 function renderHistory() {
   if (typeof renderBatchHistory === 'function') renderBatchHistory()
@@ -532,29 +516,14 @@ function renderHistory() {
 async function refresh() {
   historyRows=await api('/api/records')
   updateRate()
-  $('stats').textContent=historyRows.length+' 份检验单　/　'+historyRows.filter(needsReview).length+' 份待签字'
   renderHistory()
   renderStatistics()
 }
-function needsReview(record){
-  if (record.readonly) return false
-  return (!record.batch_id && !record.signed)
-    || (record.sampled && record.revision<=record.sample_revision)
-    || (record.decision==='不合格' && !record.signed)
-}
-
 function renderStatistics() {
-  const signed = historyRows.filter(r=>['合格','不合格'].includes(r.decision))
-  const passed = signed.filter(r=>r.decision === '合格').length
-  const pending = historyRows.filter(needsReview).length
-  $('totalMetric').textContent = historyRows.length
-  $('pendingMetric').textContent = pending
-  $('rateMetric').textContent = signed.length ? (100*passed/signed.length).toFixed(1)+'%' : '—'
-  $('signedBasis').textContent = signed.length ? passed+' / '+signed.length+' 份已判定' : '暂无检测数据'
   const days = Array.from({length:7},(_,i)=>{
     const day = new Date()
     day.setDate(day.getDate()-6+i)
-    const count = historyRows.filter(row=>new Date(row.created).toDateString() === day.toDateString()).length
+    const count = historyRows.filter(row=>!isPatrolRecord(row) && new Date(row.created).toDateString() === day.toDateString()).length
     return {label:(day.getMonth()+1)+'/'+day.getDate(), count}
   })
   const max = Math.max(1,...days.map(day=>day.count))

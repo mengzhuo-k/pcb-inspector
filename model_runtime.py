@@ -184,6 +184,7 @@ class PlatformRuntime:
                 self.targets[key] = row["project_id"]
                 active = self.models.get(key)
                 if active and active["id"] == row["id"]:
+                    active["name"] = json_loads(row["card"]).get("name") or row["version"]
                     self.errors.pop(key, None)
                     return
                 path = Path(row["weights"])
@@ -202,6 +203,7 @@ class PlatformRuntime:
                     raise ValueError("权重在加载期间发生变化")
                 self.models[key] = dict(id=row["id"], model=candidate, version=row["version"],
                     station=station, project_id=row["project_id"], classes=labels,
+                    name=json_loads(row["card"]).get("name") or row["version"],
                     sha256=digest, threshold=row["threshold"],
                     metrics=(json_loads(row["metrics"]) or {}) if "metrics" in row.keys() else {})
                 self.errors.pop(key, None)

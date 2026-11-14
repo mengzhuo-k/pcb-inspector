@@ -195,3 +195,24 @@ article,.panel,.editor{background:#fff;border:1px solid var(--border);border-rad
   .training-page .annotation-workspace{grid-template-columns:1fr}
   .training-page .detail-workspace .canvas-wrap{height:400px}
 }
+
+/* Give navigation actions a consistent, visible button treatment. */
+.inspection-page button.navigation-button{min-height:40px;padding:9px 16px;border:1px solid #a8bff2;border-radius:8px;background:#eaf1ff;color:#2455bd;font-size:13px;font-weight:650;box-shadow:0 2px 5px #3569e812;white-space:nowrap}
+.inspection-page button.navigation-button:hover:not(:disabled){background:#dbe7ff;border-color:#3569e8;color:#17439b;box-shadow:0 3px 8px #3569e825}
+.inspection-page button.navigation-button:active:not(:disabled){background:#ccdcff;box-shadow:none}
+.inspection-page button.navigation-button:disabled{background:#f0f3f8;border-color:#dce3ee;color:#94a1b5;opacity:1;box-shadow:none}
+.inspection-page #backToProcesses{margin-bottom:18px}
+.inspection-page .review-navigation{gap:10px}
+.inspection-page .process-card:hover{border-color:#89a9ed;background:#f8faff;box-shadow:0 3px 12px #3569e814}
+.inspection-page .navigation-hint,.inspection-page summary .navigation-toggle{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:6px 12px;border:1px solid #b9ccf3;border-radius:7px;background:#eaf1ff;color:#2455bd;font-size:12px;font-weight:600;white-space:nowrap}
+.inspection-page details[open]>summary .navigation-toggle{font-size:0}
+.inspection-page details[open]>summary .navigation-toggle::after{content:"收起图片记录 ↑";font-size:12px}
+.inspection-page summary:focus-visible{outline:2px solid #3569e8;outline-offset:4px;border-radius:5px}
+@media(max-width:760px){.inspection-page button.navigation-button{min-height:42px;padding:9px 12px}.inspection-page .archive-actions{gap:8px}.inspection-page .review-navigation>strong{overflow-wrap:anywhere}}
+
+.inspection-page .process-card{padding:0;overflow:hidden}
+.inspection-page .process-card-open{display:block;width:100%;padding:17px;text-align:left;background:transparent;border:0;border-radius:8px;color:inherit;box-shadow:none}
+.inspection-page .process-card-open:hover{background:#f3f7ff}
+.inspection-page .process-card-open:focus-visible{outline-offset:-4px}
+.process-card-actions{display:flex;justify-content:flex-end;padding:0 17px 14px}
+.process-card-actions button{font-size:12px}

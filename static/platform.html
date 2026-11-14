@@ -2,7 +2,7 @@
 <html lang="zh-CN"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>焊视 · 模型训练工作台</title>
-<link rel="stylesheet" href="./static/platform.css?v=20261111aq">
+<link rel="stylesheet" href="./static/platform.css?v=20261112twotypes1">
 <link rel="stylesheet" href="./static/workspace.css?v=9">
 </head><body class="training-page">
 <aside class="sidebar">
@@ -27,7 +27,7 @@
   <details id="modelHistory" class="model-history" open>
     <summary><strong>历史模型</strong><span id="modelHistorySummary">正在读取模型版本…</span></summary>
     <div class="model-history-body">
-      <div class="model-history-settings"><label class="inline-check" for="defaultModelSelect">默认使用模型 <select id="defaultModelSelect" disabled><option value="">正在读取模型…</option></select></label><span id="modelSelectionHint" role="status"></span></div>
+      <div class="model-history-settings"><label class="inline-check" for="defaultModelSelect"><span id="defaultModelRole">默认使用模型</span> <select id="defaultModelSelect" disabled><option value="">正在读取模型…</option></select></label><span id="modelSelectionHint" role="status"></span></div>
       <div class="model-improvement">
         <div><strong id="trainingBaseLabel">训练基础：初始模型</strong><p id="trainingBaseHint">可从下方选择历史模型继续改进。</p><p id="modelTrainingState" role="status"></p></div>
         <div class="archive-actions"><button id="startModelImprovement" class="primary" disabled>开始改进训练</button><button id="resetTrainingBase" class="quiet" disabled>使用初始模型</button></div>
@@ -36,13 +36,20 @@
       <p class="model-history-note">默认模型会固定用于识别，新训练的版本不会自动替换。“基于此模型改进”选择继续训练的基础，改进结果另存为新版本。历史模型由你选择删除；默认使用中或选为改进基础的模型需先切换后再删除。</p>
     </div>
   </details>
+  <section class="reference-example" aria-label="自定义示例图">
+    <button id="previewReferenceExample" class="example-thumbnail" disabled aria-label="预览当前示例图"><img id="referenceExampleImage" alt="板位矫正和焊点焊脚共用示例图" hidden><span id="referenceExampleEmpty">尚未设置示例图</span></button>
+    <div class="reference-example-info"><h2>板位矫正 · 焊点 / 焊脚示例图</h2><p>上传同板型、正面清晰的正常板图，用于板位对齐及建立焊点 / 焊脚模板。</p><p id="referenceExampleStatus" role="status">正在读取示例图…</p></div>
+    <div class="example-actions"><button id="uploadReferenceExample" class="primary" disabled>上传自定义示例图</button><input id="referenceExampleFile" type="file" accept="image/*" hidden><button id="detectReferenceExample" disabled>建立焊点 / 焊脚模板</button></div>
+  </section>
     <div id="annotationWorkspace" class="label-layout">
       <aside class="image-browser">
         <div class="panelhead"><h2>训练图库</h2><span id="labelStats" class="muted">0 张图片</span></div>
+      <div class="model-gallery-controls"><label for="galleryModelSelect">查看模型</label><select id="galleryModelSelect" disabled><option value="">待训练图库（可编辑）</option></select><p id="galleryModelHint" role="status"></p></div>
       <div class="filters">
         <button data-img-filter="all" class="active">全部</button>
         <button data-img-filter="new">未处理</button>
         <button data-img-filter="approved">已处理</button>
+        <button data-img-filter="train" hidden>训练集</button><button data-img-filter="val" hidden>验证集</button><button data-img-filter="test" hidden>测试集</button>
       </div>
         <div class="image-list" id="labelList"></div>
         <button id="loadMoreImages" class="quiet" hidden>加载更多图片</button>
@@ -107,7 +114,23 @@
     <button id="applyAlignment" class="primary" type="button">完成对齐</button>
   </div>
 </dialog>
+<dialog id="referenceExampleDialog" class="help-dialog">
+  <div class="help-head"><h2 id="referenceExampleTitle">示例图预览</h2><button id="closeReferenceExample" type="button">关闭</button></div>
+  <div class="help-body">
+    <div id="referenceTemplateTools" class="reference-template-tools" hidden>
+      <label>定位方式<select id="referenceSiteSensitivity"><option value="precise">严格过滤误框</option><option value="balanced">标准定位</option><option value="dense">细小焊脚</option></select></label><button id="regenerateReferenceSites" type="button">重新自动定位</button>
+      <label>编辑方式<select id="referenceSiteMode"><option value="view">查看</option><option value="add">拖框补点</option><option value="move">调整位置</option><option value="delete">点击删点</option></select></label>
+      <label>放大<input id="referenceSiteZoom" type="range" min="1" max="4" step="0.5" value="1"></label><button id="undoReferenceSite" type="button" disabled>撤销</button><button id="clearReferenceSites" type="button">清空重画</button>
+    </div>
+    <div class="reference-example-scroll"><div class="reference-example-preview"><img id="referenceExamplePreview" alt="自定义示例图预览" draggable="false"><canvas id="referenceExampleSites" aria-label="焊点焊脚候选点位编辑"></canvas></div></div>
+    <p id="referenceTemplateStatus" role="status" hidden></p><p id="referenceTemplateHint" class="muted" hidden>自动定位仅包含圆形通孔焊盘、贴片元件端部矩形焊点。结果仍需按板型核对。放大核对后，可拖框补点、拖动调整位置或点击删点；修改后点击“保存模板”。</p>
+    <button id="saveReferenceTemplate" class="primary" type="button" hidden disabled>保存模板</button><p id="referenceExampleDescription"></p><p id="referenceExampleWarning" hidden>替换示例图会清空原焊点 / 焊脚模板，需重新建立。已保存的图片和检验记录保留原有结果，后续图片使用新示例图。</p><button id="useReferenceExample" class="primary" type="button" hidden>使用此示例图</button></div>
+</dialog>
+<dialog id="modelNameDialog" class="help-dialog">
+  <div class="help-head"><h2>修改模型名称</h2><button id="cancelModelName" type="button">取消</button></div>
+  <form id="modelNameForm" class="help-body"><label for="modelNameInput">模型名称<input id="modelNameInput" maxlength="80" required placeholder="例如：一号线焊接检测模型"></label><p id="modelNameHint" class="muted"></p><p id="modelNameError" role="alert"></p><button id="saveModelName" class="primary" type="submit">保存名称</button></form>
+</dialog>
 <div id="toast" role="status"></div>
 <script src="./static/model-test-notice.js"></script>
-<script src="./static/platform.js?v=20261111fixeddefault"></script>
+<script src="./static/platform.js?v=20261112twotypes1"></script>
 </body></html>
